@@ -28,8 +28,38 @@ export default tseslint.config(
     rules: { '@typescript-eslint/no-floating-promises': 'off' },
   },
   {
-    // Module boundaries (plan section 3.6): a module may import another
-    // module only through its index.ts. Rules are added when modules exist.
+    // Integration tests assert on parsed JSON from the server (typed `any` on
+    // purpose in helpers.ts); the unsafe-any rules add noise, not safety, there.
+    files: ['tests/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+  {
+    // Module boundaries (plan section 3.6): inside apps/api/src/modules/<m>/,
+    // code may import another module only through that module's index.ts.
+    // "../<other>/<file>" is a deep import into another module's internals.
+    files: ['apps/api/src/modules/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              // ../<module>/<anything but index.ts>; "../../x" (shared code) is not matched.
+              regex: '^\\.\\./(?!\\.)[^/]+/(?!index\\.ts$).+',
+              message: 'Import another module only through its index.ts (ADR-011).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['eslint.config.js'],
     ...tseslint.configs.disableTypeChecked,
   },

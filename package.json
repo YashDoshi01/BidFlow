@@ -17,6 +17,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "node --test --test-reporter=spec \"apps/**/*.test.ts\"",
+    "db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
+    "test:integration": "node scripts/test-integration.ts",
     "check:infra": "node --env-file-if-exists=.env scripts/check-infra.ts",
     "infra:up": "docker compose --env-file .env -f infra/compose.yaml up -d --wait",
     "infra:down": "docker compose --env-file .env -f infra/compose.yaml down",

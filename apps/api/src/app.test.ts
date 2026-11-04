@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 import { createApp } from './app.ts';
+import { createPool } from './db/pool.ts';
 import type { DependencyCheck } from './health/dependencies.ts';
+import { createLogger } from './logging/logger.ts';
 
 const up: DependencyCheck = { name: 'up', run: () => Promise.resolve() };
 const down: DependencyCheck = {
@@ -15,12 +17,20 @@ async function withServer<T>(
   checks: DependencyCheck[],
   fn: (base: string) => Promise<T>,
 ): Promise<T> {
-  const server = createApp({ checks }).listen(0, '127.0.0.1');
+  // The pool never connects unless a query runs; health tests run none.
+  const db = createPool('postgres://unused:unused@127.0.0.1:1/unused');
+  const server = createApp({
+    db,
+    checks,
+    logger: createLogger('error', () => undefined),
+    sessionTtlSeconds: 3600,
+  }).listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   try {
     return await fn(`http://127.0.0.1:${String((server.address() as AddressInfo).port)}`);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    await db.end();
   }
 }
 

@@ -1,0 +1,32 @@
+# Throwaway PostgreSQL for integration tests. Never shares anything with the
+# development stack (infra/compose.yaml): different project name (passed with
+# -p by scripts/test-integration.ts), a random free host port, its own network
+# subnet, and no volume (data lives in tmpfs and disappears with the container).
+# Credentials are generated per run by the script and passed through the
+# environment; nothing here is a secret.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: bidflow_test
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?set by scripts/test-integration.ts}
+      POSTGRES_DB: bidflow_test
+    ports:
+      - '127.0.0.1:${TEST_POSTGRES_PORT:?set by scripts/test-integration.ts}:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    # Durability is irrelevant for a throwaway database; fsync off is faster.
+    command: ['postgres', '-c', 'fsync=off', '-c', 'max_connections=100']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bidflow_test -d bidflow_test']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks:
+      - testnet
+
+networks:
+  testnet:
+    ipam:
+      config:
+        - subnet: 172.31.77.0/24
