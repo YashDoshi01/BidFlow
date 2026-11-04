@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+BidFlow_Implementation_and_Learning_Plan.md
+CLAUDE.md

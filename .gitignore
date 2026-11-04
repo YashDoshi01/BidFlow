@@ -1,4 +1,4 @@
-CLAUDE
+CLAUDE.md
 # Logs
 logs
 *.log
@@ -41,6 +41,7 @@ build/Release
 # Dependency directories
 node_modules/
 jspm_packages/
+docs/
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
@@ -69,6 +70,7 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
+!.env.example
 !.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
@@ -148,3 +150,4 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+BidFlow_Implementation_and_Learning_Plan.md
