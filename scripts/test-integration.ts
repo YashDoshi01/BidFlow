@@ -47,7 +47,10 @@ try {
   const result = await migrate(url, path.join(root, 'db', 'migrations'));
   console.log(`migrations applied: ${result.applied.join(', ')}`);
 
-  const extra = process.argv.slice(2);
+  // `--e2e` runs the real-browser tests in tests/e2e instead of tests/integration.
+  const args = process.argv.slice(2);
+  const e2e = args.includes('--e2e');
+  const extra = args.filter((a) => a !== '--e2e');
   exitCode = await new Promise<number>((resolve) => {
     const child = spawn(
       process.execPath,
@@ -56,7 +59,7 @@ try {
         '--test-reporter=spec',
         '--test-concurrency=1',
         ...extra,
-        'tests/integration/**/*.test.ts',
+        e2e ? 'tests/e2e/**/*.test.ts' : 'tests/integration/**/*.test.ts',
       ],
       { cwd: root, stdio: 'inherit', env: { ...process.env, TEST_DATABASE_URL: url } },
     );

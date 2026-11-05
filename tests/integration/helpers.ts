@@ -1,5 +1,6 @@
 import type { AddressInfo } from 'node:net';
-import { createApp } from '../../apps/api/src/app.ts';
+import type { Server } from 'socket.io';
+import { createRunningServer } from '../../apps/api/src/createServer.ts';
 import { createPool, type Db } from '../../apps/api/src/db/pool.ts';
 import { createLogger } from '../../apps/api/src/logging/logger.ts';
 
@@ -16,28 +17,38 @@ export interface TestApp {
   base: string;
   /** Every log line the app wrote, parsed. */
   logs: Record<string, unknown>[];
+  /** The Socket.IO server, for tests that inspect rooms. */
+  io: Server;
   close: () => Promise<void>;
 }
 
-export async function startApp(options: { sessionTtlSeconds?: number } = {}): Promise<TestApp> {
+export async function startApp(
+  options: { sessionTtlSeconds?: number; maxRoomsPerSocket?: number } = {},
+): Promise<TestApp> {
   const db = createPool(testDatabaseUrl(), 20);
   const logs: Record<string, unknown>[] = [];
   const logger = createLogger('debug', (line) => {
     logs.push(JSON.parse(line) as Record<string, unknown>);
   });
-  const server = createApp({
+  const running = createRunningServer({
     db,
     checks: [],
     logger,
     sessionTtlSeconds: options.sessionTtlSeconds ?? 3600,
-  }).listen(0, '127.0.0.1');
+    ...(options.maxRoomsPerSocket === undefined
+      ? {}
+      : { maxRoomsPerSocket: options.maxRoomsPerSocket }),
+  });
+  const server = running.server.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   return {
     db,
     logs,
+    io: running.realtime.io,
     base: `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`,
     close: async () => {
-      await new Promise((resolve) => server.close(resolve));
+      // Closing Socket.IO also closes the HTTP server and all WebSocket connections.
+      await running.realtime.close();
       await db.end();
     },
   };

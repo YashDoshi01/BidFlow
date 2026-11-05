@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
@@ -20,6 +21,25 @@ export default tseslint.config(
       // A swallowed promise is a silent failure (plan section 4.1, rule 11).
       '@typescript-eslint/no-floating-promises': 'error',
     },
+  },
+  {
+    // The browser app: browser globals and the rules of hooks (a wrong dependency
+    // array in an effect is how duplicate subscriptions are born).
+    files: ['apps/web/src/**/*.{ts,tsx}'],
+    languageOptions: { globals: globals.browser },
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'error',
+      // The API/test files use Node globals; the browser code must not. (vite.config.ts
+      // runs in Node and is outside src/.)
+      'no-restricted-globals': ['error', 'process', 'Buffer', '__dirname'],
+    },
+  },
+  {
+    // Browser test files import node:test.
+    files: ['apps/web/src/**/*.test.ts'],
+    rules: { 'no-restricted-globals': 'off' },
   },
   {
     // node:test's describe()/it() return promises that the runner collects;

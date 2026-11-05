@@ -383,15 +383,17 @@ describe('bid engine (real PostgreSQL)', () => {
       const auctions = createAuctionService(app.db);
       const canned = { canned: true };
       const service = createBidService(app.db, auctions, {
-        // Runs after the recheck, inside the bid transaction: a concurrent writer
-        // "wins" the key at exactly the moment the recheck can no longer see it.
-        afterIdempotencyRecheck: async () => {
-          await app.db.query(
-            `INSERT INTO idempotency_records
+        hooks: {
+          // Runs after the recheck, inside the bid transaction: a concurrent writer
+          // "wins" the key at exactly the moment the recheck can no longer see it.
+          afterIdempotencyRecheck: async () => {
+            await app.db.query(
+              `INSERT INTO idempotency_records
                (user_id, operation, idempotency_key, request_hash, response_status, response_body, expires_at)
              VALUES ($1, 'place_bid', $2, $3, 201, $4::jsonb, now() + interval '1 day')`,
-            [buyer().id, key, requestHash(id, '10.00'), JSON.stringify(canned)],
-          );
+              [buyer().id, key, requestHash(id, '10.00'), JSON.stringify(canned)],
+            );
+          },
         },
       });
       const result = await service.place({

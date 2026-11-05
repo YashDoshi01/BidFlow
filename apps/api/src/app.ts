@@ -4,18 +4,31 @@ import { errorHandler, notFoundHandler } from './http/errors.ts';
 import { requestContext } from './http/requestContext.ts';
 import { runChecks, type DependencyCheck } from './health/dependencies.ts';
 import type { Logger } from './logging/logger.ts';
-import { auctionRoutes, createAuctionService } from './modules/auctions/index.ts';
-import { authRoutes, createAuthService } from './modules/auth/index.ts';
-import { bidRoutes, createBidService } from './modules/bids/index.ts';
+import { noopPublisher, type EventPublisher } from './events/publisher.ts';
+import { auctionRoutes } from './modules/auctions/index.ts';
+import { authRoutes } from './modules/auth/index.ts';
+import { bidRoutes } from './modules/bids/index.ts';
+import { createServices, type Services } from './services.ts';
 
 export interface AppDeps {
   db: Db;
   checks: DependencyCheck[];
   logger: Logger;
   sessionTtlSeconds: number;
+  /** Shared with the WebSocket gateway. Built here if not given (HTTP-only tests). */
+  services?: Services;
+  /** Used only when `services` is not given. */
+  publisher?: EventPublisher;
 }
 
-export function createApp({ db, checks, logger, sessionTtlSeconds }: AppDeps): express.Express {
+export function createApp({
+  db,
+  checks,
+  logger,
+  sessionTtlSeconds,
+  services,
+  publisher,
+}: AppDeps): express.Express {
   const app = express();
   app.disable('x-powered-by');
 
@@ -40,11 +53,12 @@ export function createApp({ db, checks, logger, sessionTtlSeconds }: AppDeps): e
     res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'degraded', checks: results });
   });
 
-  const auth = createAuthService(db, { sessionTtlSeconds });
-  const auctions = createAuctionService(db);
+  const { auth, auctions, bids } =
+    services ??
+    createServices(db, { sessionTtlSeconds, logger, publisher: publisher ?? noopPublisher });
   app.use(authRoutes(auth));
   app.use(auctionRoutes(auctions, auth));
-  app.use(bidRoutes(createBidService(db, auctions), auth));
+  app.use(bidRoutes(bids, auth));
 
   app.use(notFoundHandler);
   app.use(errorHandler(logger));

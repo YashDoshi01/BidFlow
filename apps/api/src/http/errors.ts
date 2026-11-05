@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'EMAIL_TAKEN'
   | 'INVALID_STATE'
   | 'AUCTION_NOT_LIVE'
+  | 'TOO_MANY_ROOMS'
   | 'AUCTION_ENDED'
   | 'BID_TOO_LOW'
   | 'BIDDER_IS_SELLER'
