@@ -17,10 +17,13 @@ export interface AuctionRow {
   ends_at: Date;
   created_at: Date;
   updated_at: Date;
+  bid_sequence: string; // bigint as string
+  highest_bid_id: string | null;
 }
 
 const COLUMNS = `id, seq, seller_id, title, description, starting_price, current_price,
-  minimum_increment, currency, status, starts_at, ends_at, created_at, updated_at`;
+  minimum_increment, currency, status, starts_at, ends_at, created_at, updated_at,
+  bid_sequence, highest_bid_id`;
 
 type Queryable = Db | pg.PoolClient;
 
@@ -130,10 +133,22 @@ export async function setStatus(
   return rows[0] as AuctionRow;
 }
 
-/** Database wall-clock time (see plan section 3.4: clock_timestamp, not NOW). */
-export async function databaseNow(client: Queryable): Promise<Date> {
-  const { rows } = await client.query<{ now: Date }>('SELECT clock_timestamp() AS now');
-  return (rows[0] as { now: Date }).now;
+/**
+ * Records an accepted bid on the auction: the new price, the highest-bid
+ * reference and the counter. The caller holds the row lock and has inserted the
+ * bid; the database trigger verifies that all of this agrees.
+ */
+export async function applyAcceptedBid(
+  client: pg.PoolClient,
+  a: { auctionId: string; bidId: string; amount: string; bidSequence: string },
+): Promise<void> {
+  await client.query(
+    `UPDATE auctions
+        SET current_price = $2, highest_bid_id = $3, bid_sequence = $4,
+            updated_at = clock_timestamp()
+      WHERE id = $1`,
+    [a.auctionId, a.amount, a.bidId, a.bidSequence],
+  );
 }
 
 export interface ListFilter {

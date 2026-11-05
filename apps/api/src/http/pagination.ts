@@ -1,4 +1,4 @@
-import { AppError } from '../../http/errors.ts';
+import { AppError } from './errors.ts';
 
 // An opaque cursor is not a security boundary (it is trivially decodable); it
 // stops clients depending on its shape. The value is validated on the way in.

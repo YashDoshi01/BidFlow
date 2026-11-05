@@ -1,0 +1,87 @@
+import type pg from 'pg';
+import type { Db } from '../../db/pool.ts';
+
+type Queryable = Db | pg.PoolClient;
+
+export interface BidRow {
+  id: string;
+  auction_id: string;
+  bidder_id: string;
+  amount: string;
+  bid_sequence: string;
+  accepted_at: Date;
+}
+
+const COLUMNS = 'id, auction_id, bidder_id, amount, bid_sequence, accepted_at';
+
+export interface BoundaryDecision {
+  /** The single timestamp for every time decision in this transaction (full microsecond precision, as text). */
+  ts: string;
+  started: boolean;
+  open: boolean;
+}
+
+/**
+ * The bidding-window decision (plan section 3.4, ADR-018).
+ *
+ * clock_timestamp() is the real current time. now() / CURRENT_TIMESTAMP would
+ * return the START of the transaction, which is stale if this transaction waited
+ * for the auction lock. It must therefore run AFTER the lock is held.
+ *
+ * One statement, one clock reading: the comparisons are done in SQL against the
+ * same value (JavaScript Dates would truncate microseconds to milliseconds), and
+ * the value is returned so the bid row stores exactly the time it was judged at.
+ */
+export async function readBoundary(
+  client: pg.PoolClient,
+  auctionId: string,
+): Promise<BoundaryDecision> {
+  const { rows } = await client.query<BoundaryDecision>(
+    `WITH t AS MATERIALIZED (SELECT clock_timestamp() AS ts)
+     SELECT t.ts::text AS ts, t.ts >= a.starts_at AS started, t.ts < a.ends_at AS open
+       FROM t, auctions a
+      WHERE a.id = $1`,
+    [auctionId],
+  );
+  return rows[0] as BoundaryDecision;
+}
+
+export async function insertBid(
+  client: pg.PoolClient,
+  b: {
+    auctionId: string;
+    bidderId: string;
+    amount: string;
+    bidSequence: string;
+    acceptedAt: string;
+  },
+): Promise<BidRow> {
+  const { rows } = await client.query<BidRow>(
+    `INSERT INTO bids (auction_id, bidder_id, amount, bid_sequence, accepted_at)
+     VALUES ($1, $2, $3, $4, $5::timestamptz)
+     RETURNING ${COLUMNS}`,
+    [b.auctionId, b.bidderId, b.amount, b.bidSequence, b.acceptedAt],
+  );
+  return rows[0] as BidRow;
+}
+
+export async function listBids(
+  db: Queryable,
+  f: { auctionId: string; beforeSequence: string | undefined; limit: number },
+): Promise<BidRow[]> {
+  const params: unknown[] = [f.auctionId];
+  let cursor = '';
+  if (f.beforeSequence !== undefined) {
+    params.push(f.beforeSequence);
+    cursor = 'AND bid_sequence < $2';
+  }
+  params.push(f.limit);
+  const { rows } = await db.query<BidRow>(
+    `SELECT ${COLUMNS} FROM bids
+      WHERE auction_id = $1 ${cursor}
+      ORDER BY bid_sequence DESC
+      LIMIT $${String(params.length)}`,
+    params,
+  );
+  return rows;
+}

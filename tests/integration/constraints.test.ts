@@ -130,7 +130,7 @@ describe('database constraints (raw SQL, application bypassed)', () => {
       await assert.rejects(move(live, 'SCHEDULED'), /illegal auction status transition/);
     });
 
-    it('freezes the sale terms after publication but still allows price and end time to move', async () => {
+    it('freezes the sale terms after publication; the end time may move, the price may not move alone', async () => {
       const id = await newAuction();
       await move(id, 'LIVE');
       for (const set of [
@@ -148,9 +148,13 @@ describe('database constraints (raw SQL, application bypassed)', () => {
           set,
         );
       }
-      await db.query(
-        "UPDATE auctions SET current_price = 12, ends_at = ends_at + interval '2 minutes' WHERE id = $1",
-        [id],
+      await db.query("UPDATE auctions SET ends_at = ends_at + interval '2 minutes' WHERE id = $1", [
+        id,
+      ]);
+      // Since migration 0003: price changes only together with a new highest bid.
+      await assert.rejects(
+        db.query('UPDATE auctions SET current_price = 12 WHERE id = $1', [id]),
+        /only change together with highest_bid_id/,
       );
     });
   });

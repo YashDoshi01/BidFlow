@@ -44,7 +44,9 @@ export async function startApp(options: { sessionTtlSeconds?: number } = {}): Pr
 }
 
 export async function resetData(db: Db): Promise<void> {
-  await db.query('TRUNCATE sessions, auctions, users RESTART IDENTITY CASCADE');
+  await db.query(
+    'TRUNCATE idempotency_records, bids, sessions, auctions, users RESTART IDENTITY CASCADE',
+  );
 }
 
 export interface ApiResponse {
@@ -124,4 +126,49 @@ export function auctionBody(overrides: Record<string, unknown> = {}): Record<str
     endsAt: inFuture(2 * HOUR),
     ...overrides,
   };
+}
+
+export const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+let keyCounter = 0;
+/** A fresh, valid Idempotency-Key. */
+export function newKey(): string {
+  keyCounter += 1;
+  return `test-key-${String(Date.now())}-${String(keyCounter)}`;
+}
+
+/** Creates and publishes an auction that is LIVE right now. Returns its id. */
+export async function liveAuction(
+  api: Api,
+  sellerToken: string,
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
+  const created = await api('POST', '/auctions', {
+    token: sellerToken,
+    body: auctionBody({
+      startsAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+      endsAt: inFuture(2 * HOUR),
+      ...overrides,
+    }),
+  });
+  if (created.status !== 201) throw new Error(`create failed: ${JSON.stringify(created.body)}`);
+  const id = created.body.auction.id as string;
+  const published = await api('POST', `/auctions/${id}/publish`, { token: sellerToken });
+  if (published.body.auction.status !== 'LIVE') throw new Error('auction did not become LIVE');
+  return id;
+}
+
+export function placeBid(
+  api: Api,
+  token: string | undefined,
+  auctionId: string,
+  amount: unknown,
+  key: string | null = newKey(),
+): Promise<ApiResponse> {
+  return api('POST', `/auctions/${auctionId}/bids`, {
+    token,
+    body: { amount },
+    ...(key === null ? {} : { headers: { 'Idempotency-Key': key } }),
+  });
 }

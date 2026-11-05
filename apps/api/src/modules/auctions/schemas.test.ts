@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { AppError } from '../../http/errors.ts';
-import { decodeCursor, encodeCursor } from './cursor.ts';
+import { decodeCursor, encodeCursor } from '../../http/pagination.ts';
 import { createAuctionSchema, listQuerySchema, updateAuctionSchema } from './schemas.ts';
 
 const base = {

@@ -60,3 +60,14 @@ export function pgConstraint(error: unknown): string | undefined {
 
 export const PG_UNIQUE_VIOLATION = '23505';
 export const PG_CHECK_VIOLATION = '23514';
+
+/**
+ * Database wall-clock time. This is the ONLY clock used for boundary decisions
+ * (plan section 3.4). It must be read AFTER the row lock is held: now() and
+ * CURRENT_TIMESTAMP return the transaction START time, which is stale after a
+ * lock wait; clock_timestamp() is the actual current time.
+ */
+export async function databaseClock(client: pg.Pool | pg.PoolClient): Promise<Date> {
+  const { rows } = await client.query<{ now: Date }>('SELECT clock_timestamp() AS now');
+  return (rows[0] as { now: Date }).now;
+}

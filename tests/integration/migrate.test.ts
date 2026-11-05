@@ -51,11 +51,22 @@ describe('migration runner (scratch database per test)', () => {
     const { url } = await scratch({});
     const real = path.resolve(import.meta.dirname, '../../db/migrations');
     const first = await migrate(url, real);
-    assert.deepEqual(first.applied, ['0001_users_and_sessions.sql', '0002_auctions.sql']);
+    assert.deepEqual(first.applied, [
+      '0001_users_and_sessions.sql',
+      '0002_auctions.sql',
+      '0003_bids_and_idempotency.sql',
+    ]);
     const second = await migrate(url, real);
     assert.deepEqual(second.applied, []);
-    assert.equal(second.alreadyApplied.length, 2);
-    assert.deepEqual(await tables(url), ['auctions', 'schema_migrations', 'sessions', 'users']);
+    assert.equal(second.alreadyApplied.length, 3);
+    assert.deepEqual(await tables(url), [
+      'auctions',
+      'bids',
+      'idempotency_records',
+      'schema_migrations',
+      'sessions',
+      'users',
+    ]);
   });
 
   it('refuses to run when an applied migration file was edited', async () => {

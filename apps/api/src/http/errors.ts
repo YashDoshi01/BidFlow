@@ -12,6 +12,11 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'EMAIL_TAKEN'
   | 'INVALID_STATE'
+  | 'AUCTION_NOT_LIVE'
+  | 'AUCTION_ENDED'
+  | 'BID_TOO_LOW'
+  | 'BIDDER_IS_SELLER'
+  | 'IDEMPOTENCY_KEY_REUSED'
   | 'INTERNAL_ERROR';
 
 export interface ErrorDetail {
@@ -24,13 +29,22 @@ export class AppError extends Error {
   readonly status: number;
   readonly code: ErrorCode;
   readonly details: ErrorDetail[] | undefined;
+  /** Extra public, non-secret fields for the client (e.g. the minimum acceptable bid). */
+  readonly data: Record<string, string> | undefined;
 
-  constructor(status: number, code: ErrorCode, message: string, details?: ErrorDetail[]) {
+  constructor(
+    status: number,
+    code: ErrorCode,
+    message: string,
+    details?: ErrorDetail[],
+    data?: Record<string, string>,
+  ) {
     super(message);
     this.name = 'AppError';
     this.status = status;
     this.code = code;
     this.details = details;
+    this.data = data;
   }
 }
 
@@ -63,6 +77,7 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
           message: known.message,
           requestId,
           ...(known.details ? { details: known.details } : {}),
+          ...(known.data ? { data: known.data } : {}),
         },
       });
       return;

@@ -6,6 +6,7 @@ import { runChecks, type DependencyCheck } from './health/dependencies.ts';
 import type { Logger } from './logging/logger.ts';
 import { auctionRoutes, createAuctionService } from './modules/auctions/index.ts';
 import { authRoutes, createAuthService } from './modules/auth/index.ts';
+import { bidRoutes, createBidService } from './modules/bids/index.ts';
 
 export interface AppDeps {
   db: Db;
@@ -43,6 +44,7 @@ export function createApp({ db, checks, logger, sessionTtlSeconds }: AppDeps): e
   const auctions = createAuctionService(db);
   app.use(authRoutes(auth));
   app.use(auctionRoutes(auctions, auth));
+  app.use(bidRoutes(createBidService(db, auctions), auth));
 
   app.use(notFoundHandler);
   app.use(errorHandler(logger));

@@ -12,11 +12,13 @@ The full plan is in `BidFlow_Implementation_and_Learning_Plan.md`. Working rules
 | ----- | ------------------------------------------------- |
 | 0     | Done - repo, tooling, infra                       |
 | 1     | Done - users, sessions, auctions, REST foundation |
-| 2-9   | Not started                                       |
+| 2     | Done - bid engine, idempotency                    |
+| 3-9   | Not started                                       |
 
-Phase 1 adds: PostgreSQL migrations, registration/login/logout with server-side sessions, and
-auctions you can create, edit (while draft), publish, list and fetch. **There is no bidding yet**
-(Phase 2). API reference: `docs/API.md`. Data model: `docs/DATA_MODEL.md`.
+Phase 1 added PostgreSQL migrations, registration/login/logout with server-side sessions, and auctions you
+can create, edit (while draft), publish, list and fetch. Phase 2 adds `POST /auctions/:id/bids` with
+idempotency keys and bid history. **There is no live push yet** (WebSockets are Phase 3) and nothing ends
+an auction automatically (Phase 6). API reference: `docs/API.md`. Data model: `docs/DATA_MODEL.md`.
 
 ## Requirements
 

@@ -1,6 +1,13 @@
 import { AppError } from '../../http/errors.ts';
-import { PG_CHECK_VIOLATION, pgCode, withTransaction, type Db } from '../../db/pool.ts';
-import { decodeCursor, encodeCursor } from './cursor.ts';
+import {
+  PG_CHECK_VIOLATION,
+  databaseClock,
+  pgCode,
+  withTransaction,
+  type Db,
+} from '../../db/pool.ts';
+import { addMoney } from '../../money.ts';
+import { decodeCursor, encodeCursor } from '../../http/pagination.ts';
 import * as repo from './repository.ts';
 import type { CreateAuctionInput, ListQuery, UpdateAuctionInput } from './schemas.ts';
 import { canTransition, publishTarget, validateSchedule } from './stateMachine.ts';
@@ -19,6 +26,22 @@ export interface AuctionView {
   endsAt: string;
   createdAt: string;
   updatedAt: string;
+  /** Number of accepted bids (the auction's bid_sequence). */
+  bidSequence: string;
+  highestBidId: string | null;
+  /** The smallest amount a new bid must reach right now; null if it exceeds the maximum price. */
+  minimumNextBid: string | null;
+}
+
+/** First bid: the starting price. Later: current price + increment (exact decimal math). */
+export function minimumNextBid(
+  r: Pick<
+    repo.AuctionRow,
+    'highest_bid_id' | 'starting_price' | 'current_price' | 'minimum_increment'
+  >,
+): string | null {
+  if (r.highest_bid_id === null) return r.starting_price;
+  return addMoney(r.current_price, r.minimum_increment) ?? null;
 }
 
 function toView(r: repo.AuctionRow): AuctionView {
@@ -36,6 +59,9 @@ function toView(r: repo.AuctionRow): AuctionView {
     endsAt: r.ends_at.toISOString(),
     createdAt: r.created_at.toISOString(),
     updatedAt: r.updated_at.toISOString(),
+    bidSequence: r.bid_sequence,
+    highestBidId: r.highest_bid_id,
+    minimumNextBid: minimumNextBid(r),
   };
 }
 
@@ -147,7 +173,7 @@ export function createAuctionService(db: Db): AuctionService {
           throw new AppError(409, 'INVALID_STATE', 'Only a DRAFT auction can be published');
         }
         // Read the clock after the lock is held (plan section 3.4).
-        const now = await repo.databaseNow(client);
+        const now = await databaseClock(client);
         const target = publishTarget(row.starts_at, row.ends_at, now);
         if (!target) {
           throw new AppError(409, 'INVALID_STATE', 'endsAt is in the past; edit the auction first');

@@ -6,11 +6,15 @@ import { AppError, type ErrorDetail } from './errors.ts';
  * details list the field path and the rule, never the submitted value
  * (the value may be a password).
  */
-export function parseInput<S extends z.ZodType>(schema: S, input: unknown): z.infer<S> {
+export function parseInput<S extends z.ZodType>(
+  schema: S,
+  input: unknown,
+  rootPath = '(body)',
+): z.infer<S> {
   const result = schema.safeParse(input);
   if (result.success) return result.data;
   const details: ErrorDetail[] = result.error.issues.map((issue) => ({
-    path: issue.path.join('.') || '(body)',
+    path: issue.path.join('.') || rootPath,
     message: issue.message,
   }));
   throw new AppError(400, 'VALIDATION_FAILED', 'Request validation failed', details);
