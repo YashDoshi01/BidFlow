@@ -1,0 +1,16 @@
+# The image needs only package files, apps/api (without tests), scripts/migrate.ts and db/.
+# Everything else stays out of the build context (and out of the image).
+.git
+.env
+.env.*
+!.env.example
+node_modules
+**/node_modules
+docs
+tests
+apps/web
+**/*.test.ts
+**/dist
+coverage
+*.log
+.vscode

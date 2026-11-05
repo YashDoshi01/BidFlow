@@ -1,0 +1,142 @@
+# A production-shaped stack: NGINX -> two identical API containers -> PostgreSQL + Redis.
+# It is self-contained (its own PostgreSQL and Redis, separate from infra/compose.yaml, the
+# single-process development stack) and is started with scripts/cluster.ts, which builds the
+# image, starts the databases, runs the migrations once, then starts the API containers.
+#
+# Variables (see scripts/cluster.ts): API_IMAGE, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
+# optional NGINX_PORT (empty = a random free host port).
+name: bidflow-cluster
+
+x-api-environment: &api-environment
+  NODE_ENV: production
+  LOG_LEVEL: info
+  API_HOST: 0.0.0.0
+  API_PORT: '3000'
+  DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+  REDIS_URL: redis://redis:6379
+  # PRECAUTION, not proven by a test (its mutation survives, docs/BUGS_FOUND.md): Node's default libuv
+  # pool has 4 threads, shared by DNS lookups, scrypt password hashing and file I/O. When a dependency's
+  # name stops resolving (a stopped container) each lookup blocks a thread for ~4 s. The real fix was to
+  # stop opening a connection per readiness poll (ADR-033); this only adds headroom.
+  UV_THREADPOOL_SIZE: '16'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    ports:
+      - '127.0.0.1::5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - cluster
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - cluster
+
+  # One-shot: applies db/migrations before any API container starts (two instances starting
+  # together would also be safe: the runner takes an advisory lock).
+  migrate:
+    image: ${API_IMAGE:?}
+    command: ['node', 'scripts/migrate.ts']
+    environment: *api-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+      - cluster
+
+  api1:
+    image: ${API_IMAGE:?}
+    environment:
+      <<: *api-environment
+      INSTANCE_ID: api1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1::3000'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/health/live']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 10s
+    networks:
+      cluster:
+        # Fixed address: NGINX resolves upstream names once at start, so an instance that gets
+        # a new address after a restart would be unreachable for it.
+        ipv4_address: 172.31.90.11
+
+  api2:
+    image: ${API_IMAGE:?}
+    environment:
+      <<: *api-environment
+      INSTANCE_ID: api2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1::3000'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/health/live']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 10s
+    networks:
+      cluster:
+        ipv4_address: 172.31.90.12
+
+  nginx:
+    image: nginx:1.28-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # The built React app (npm run build:web).
+      - ../apps/web/dist:/usr/share/nginx/html:ro
+    depends_on:
+      api1:
+        condition: service_healthy
+      api2:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:${NGINX_PORT:-}:80'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/nginx-health']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - cluster
+
+volumes:
+  postgres-data:
+
+networks:
+  cluster:
+    ipam:
+      config:
+        # Fixed (and different from the development and test stacks). Only one cluster
+        # project can run at a time.
+        - subnet: 172.31.90.0/24

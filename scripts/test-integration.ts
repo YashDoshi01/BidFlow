@@ -30,11 +30,13 @@ function freePort(): Promise<number> {
 }
 
 const port = await freePort();
+const redisPort = await freePort();
 const password = randomBytes(18).toString('base64url');
 const composeEnv = {
   ...process.env,
   TEST_POSTGRES_PASSWORD: password,
   TEST_POSTGRES_PORT: String(port),
+  TEST_REDIS_PORT: String(redisPort),
 };
 const compose = (...args: string[]): Promise<{ stdout: string }> =>
   run('docker', ['compose', '-p', PROJECT, '-f', composeFile, ...args], { env: composeEnv });
@@ -61,7 +63,18 @@ try {
         ...extra,
         e2e ? 'tests/e2e/**/*.test.ts' : 'tests/integration/**/*.test.ts',
       ],
-      { cwd: root, stdio: 'inherit', env: { ...process.env, TEST_DATABASE_URL: url } },
+      {
+        cwd: root,
+        stdio: 'inherit',
+        env: {
+          ...composeEnv,
+          TEST_DATABASE_URL: url,
+          TEST_REDIS_URL: `redis://127.0.0.1:${String(redisPort)}`,
+          // Lets the outage tests stop/start the test Redis (never anything else).
+          TEST_COMPOSE_PROJECT: PROJECT,
+          TEST_COMPOSE_FILE: composeFile,
+        },
+      },
     );
     child.on('exit', (code) => {
       resolve(code ?? 1);

@@ -198,18 +198,37 @@ describe('auction room in a real browser (Edge, real API, real PostgreSQL)', () 
     const b = await open({ session: as(bob, 'Bob'), hash: hashFor(id) });
     await waitText(a.page, 'participants', '2 watching');
 
+    // Server-side truth about this room: who is in it (socket ids), not what a page happens to show.
+    const room = `auction:${id}`;
+    const members = (): string[] => [...(h.api.io.sockets.adapter.rooms.get(room) ?? [])];
+    const waitFor = async (what: string, condition: () => boolean): Promise<void> => {
+      for (let i = 0; i < 100 && !condition(); i += 1) await sleep(100);
+      assert.ok(condition(), `timed out waiting for: ${what}`);
+    };
+    await waitFor('both pages are in the room', () => members().length === 2);
+    const oldConnections = new Set(members());
+
     // Kill every WebSocket transport from the server side, as a network drop would.
     for (const socket of h.api.io.sockets.sockets.values()) socket.conn.close();
-    await waitText(a.page, 'connection', /Live/); // reconnects on its own
-    await waitText(a.page, 'participants', '2 watching'); // not 3 or 4: no duplicate subscriptions
-    await waitText(b.page, 'participants', '2 watching');
+
+    // Both pages reconnect on their own as NEW connections and re-join: exactly two members,
+    // none of them an old connection (no duplicate subscriptions, nothing left behind).
+    await waitFor(
+      'two NEW connections are in the room',
+      () => members().length === 2 && members().every((m) => !oldConnections.has(m)),
+    );
+    await waitText(a.page, 'connection', /Live/);
+    await waitText(b.page, 'connection', /Live/);
 
     await placeBid(api, bob.token, id, '10.00');
-    await waitText(a.page, 'price', /^10\.00/);
+    // Wait on the bid COUNT: the price already reads 10.00 before any bid (the starting price).
+    await waitText(a.page, 'bid-count', '1');
+    await waitText(b.page, 'bid-count', '1');
     assert.equal(await a.page.getByTestId('bid-row').count(), 1);
     assert.equal(await b.page.getByTestId('bid-row').count(), 1);
     await sleep(400);
     assert.equal(await a.page.getByTestId('bid-row').count(), 1, 'a bid was shown twice');
+    assert.equal(members().length, 2);
   });
 
   it('leaving the page leaves the room on the server (unmount cleanup)', async () => {

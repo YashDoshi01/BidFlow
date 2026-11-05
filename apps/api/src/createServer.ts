@@ -2,7 +2,7 @@ import http from 'node:http';
 import type express from 'express';
 import { createApp, type AppDeps } from './app.ts';
 import { createEventRelay } from './events/publisher.ts';
-import { attachRealtime, type Realtime } from './modules/realtime/index.ts';
+import { attachRealtime, type Realtime, type RedisPair } from './modules/realtime/index.ts';
 import { createServices } from './services.ts';
 
 export interface RunningServer {
@@ -17,7 +17,11 @@ export interface RunningServer {
  * server that wraps the app, so the publisher is a relay that is connected last.
  */
 export function createRunningServer(
-  deps: Omit<AppDeps, 'services' | 'publisher'> & { maxRoomsPerSocket?: number },
+  deps: Omit<AppDeps, 'services' | 'publisher'> & {
+    maxRoomsPerSocket?: number;
+    /** Connects this instance's rooms and broadcasts to the other instances. */
+    redis?: RedisPair;
+  },
 ): RunningServer {
   const relay = createEventRelay(deps.logger);
   const services = createServices(deps.db, {
@@ -33,6 +37,7 @@ export function createRunningServer(
     bids: services.bids,
     logger: deps.logger,
     ...(deps.maxRoomsPerSocket === undefined ? {} : { maxRoomsPerSocket: deps.maxRoomsPerSocket }),
+    ...(deps.redis === undefined ? {} : { redis: deps.redis }),
   });
   relay.attach(realtime.publisher);
   return { server, app, realtime };

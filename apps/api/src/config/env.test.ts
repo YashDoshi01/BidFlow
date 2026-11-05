@@ -15,6 +15,16 @@ describe('parseEnv', () => {
     assert.equal(env.LOG_LEVEL, 'info');
   });
 
+  it('binds to loopback by default, accepts an explicit host, and validates INSTANCE_ID', () => {
+    assert.equal(parseEnv({ ...valid }).API_HOST, '127.0.0.1');
+    assert.equal(parseEnv({ ...valid, API_HOST: '0.0.0.0' }).API_HOST, '0.0.0.0');
+    assert.equal(parseEnv({ ...valid }).INSTANCE_ID, undefined);
+    assert.equal(parseEnv({ ...valid, INSTANCE_ID: 'api-1.eu' }).INSTANCE_ID, 'api-1.eu');
+    for (const bad of ['has space', 'a'.repeat(65), 'semi;colon', '']) {
+      assert.throws(() => parseEnv({ ...valid, INSTANCE_ID: bad }), EnvValidationError, bad);
+    }
+  });
+
   it('rejects a missing DATABASE_URL and names the variable', () => {
     assert.throws(
       () => parseEnv({ REDIS_URL: valid.REDIS_URL }),

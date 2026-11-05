@@ -16,6 +16,7 @@ const hangs: DependencyCheck = { name: 'hangs', run: () => new Promise<void>(() 
 async function withServer<T>(
   checks: DependencyCheck[],
   fn: (base: string) => Promise<T>,
+  instanceId?: string,
 ): Promise<T> {
   // The pool never connects unless a query runs; health tests run none.
   const db = createPool('postgres://unused:unused@127.0.0.1:1/unused');
@@ -24,6 +25,7 @@ async function withServer<T>(
     checks,
     logger: createLogger('error', () => undefined),
     sessionTtlSeconds: 3600,
+    ...(instanceId === undefined ? {} : { instanceId }),
   }).listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   try {
@@ -46,7 +48,10 @@ describe('health endpoints', () => {
     await withServer([up], async (base) => {
       const res = await fetch(`${base}/health/ready`);
       assert.equal(res.status, 200);
-      assert.deepEqual(await res.json(), { status: 'ready', checks: [{ name: 'up', ok: true }] });
+      assert.deepEqual(await res.json(), {
+        status: 'ready',
+        checks: [{ name: 'up', ok: true, critical: true }],
+      });
     });
   });
 
@@ -57,7 +62,52 @@ describe('health endpoints', () => {
       const text = await res.text();
       assert.ok(!text.includes('hunter2'));
       const body = JSON.parse(text) as { status: string };
+      assert.equal(body.status, 'unavailable');
+    });
+  });
+
+  // Redis is optional (ADR-033): bids commit to PostgreSQL without it, so an instance with
+  // Redis down must stay in the load balancer. Otherwise a Redis outage would stop all bidding.
+  it('readiness stays 200 ("degraded") when only an OPTIONAL dependency is down', async () => {
+    const optionalDown: DependencyCheck = { ...down, name: 'redis-like', critical: false };
+    await withServer([up, optionalDown], async (base) => {
+      const res = await fetch(`${base}/health/ready`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as {
+        status: string;
+        checks: { name: string; critical: boolean; ok: boolean }[];
+      };
       assert.equal(body.status, 'degraded');
+      assert.deepEqual(
+        body.checks.map((c) => [c.name, c.critical, c.ok]),
+        [
+          ['up', true, true],
+          ['redis-like', false, false],
+        ],
+      );
+    });
+  });
+
+  it('a critical failure is still 503 even if the optional dependency is fine', async () => {
+    const optionalUp: DependencyCheck = { ...up, name: 'redis-like', critical: false };
+    await withServer([down, optionalUp], async (base) => {
+      assert.equal((await fetch(`${base}/health/ready`)).status, 503);
+    });
+  });
+
+  it('names the instance in X-Instance-Id and in the readiness body when configured', async () => {
+    await withServer(
+      [up],
+      async (base) => {
+        const live = await fetch(`${base}/health/live`);
+        assert.equal(live.headers.get('x-instance-id'), 'api-7');
+        const ready = (await (await fetch(`${base}/health/ready`)).json()) as { instance: string };
+        assert.equal(ready.instance, 'api-7');
+      },
+      'api-7',
+    );
+    await withServer([up], async (base) => {
+      assert.equal((await fetch(`${base}/health/live`)).headers.get('x-instance-id'), null);
     });
   });
 

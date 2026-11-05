@@ -25,9 +25,13 @@
     "infra:reset": "docker compose --env-file .env -f infra/compose.yaml down --volumes",
     "dev:web": "vite apps/web",
     "build:web": "vite build apps/web",
-    "test:e2e": "node scripts/test-integration.ts --e2e"
+    "test:e2e": "node scripts/test-integration.ts --e2e",
+    "test:cluster": "node scripts/test-cluster.ts",
+    "cluster:up": "node --env-file-if-exists=.env scripts/cluster.ts up",
+    "cluster:down": "node --env-file-if-exists=.env scripts/cluster.ts down"
   },
   "dependencies": {
+    "@socket.io/redis-adapter": "8.3.0",
     "express": "5.3.0",
     "ioredis": "6.0.0",
     "pg": "8.23.1",

@@ -19,6 +19,8 @@ export interface AppDeps {
   services?: Services;
   /** Used only when `services` is not given. */
   publisher?: EventPublisher;
+  /** Returned in the X-Instance-Id header so a request can be traced to the instance that served it. */
+  instanceId?: string;
 }
 
 export function createApp({
@@ -28,6 +30,7 @@ export function createApp({
   sessionTtlSeconds,
   services,
   publisher,
+  instanceId,
 }: AppDeps): express.Express {
   const app = express();
   app.disable('x-powered-by');
@@ -35,6 +38,7 @@ export function createApp({
   app.use(requestContext(logger));
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (instanceId) res.setHeader('X-Instance-Id', instanceId);
     next();
   });
   // A small limit: every JSON body in this API is a few hundred bytes.
@@ -46,11 +50,19 @@ export function createApp({
     res.status(200).json({ status: 'ok' });
   });
 
-  // Readiness: can this instance do useful work? 503 if a dependency is down.
+  // Readiness: can this instance do its core job? Only a CRITICAL dependency failing (PostgreSQL)
+  // makes it 503 and takes the instance out of the load balancer. Redis down is `degraded` but
+  // still 200: bids are committed to PostgreSQL and must keep working; only live fan-out suffers.
+  // (If Redis outages removed instances from rotation, a Redis outage would stop all bidding.)
   app.get('/health/ready', async (_req, res) => {
     const results = await runChecks(checks);
-    const ready = results.every((r) => r.ok);
-    res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'degraded', checks: results });
+    const criticalDown = results.some((r) => r.critical && !r.ok);
+    const anyDown = results.some((r) => !r.ok);
+    res.status(criticalDown ? 503 : 200).json({
+      status: criticalDown ? 'unavailable' : anyDown ? 'degraded' : 'ready',
+      ...(instanceId ? { instance: instanceId } : {}),
+      checks: results,
+    });
   });
 
   const { auth, auctions, bids } =

@@ -25,6 +25,21 @@ services:
     networks:
       - testnet
 
+  # Real Redis for the multi-instance tests (two API instances in one test process) and for
+  # the outage tests, which stop and start THIS container only. Random host port, no volume.
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '127.0.0.1:${TEST_REDIS_PORT:?set by scripts/test-integration.ts}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks:
+      - testnet
+
 networks:
   testnet:
     ipam:

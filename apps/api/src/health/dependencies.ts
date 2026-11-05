@@ -5,6 +5,12 @@ export interface DependencyCheck {
   name: string;
   /** Resolves if the dependency is reachable, rejects otherwise. */
   run: () => Promise<void>;
+  /**
+   * Critical: the instance cannot do its job without it (PostgreSQL), so readiness fails and a
+   * load balancer stops sending traffic. Optional (default false for Redis): the instance still
+   * does its core job (bids are committed to PostgreSQL), only live fan-out degrades. Default: critical.
+   */
+  critical?: boolean;
 }
 
 const CHECK_TIMEOUT_MS = 2000;
@@ -28,9 +34,40 @@ export function postgresCheck(connectionString: string): DependencyCheck {
   };
 }
 
+/**
+ * Readiness through the application's OWN pool: it tests the path real requests use, and it does
+ * not open a new connection (and a new DNS lookup) on every poll. Found by the cluster test: with
+ * a dependency's name unresolvable (a stopped container), lookups take ~4 s, and per-poll
+ * connections competed for Node's 4-thread libuv pool.
+ */
+export function postgresPoolCheck(pool: {
+  query: (sql: string) => Promise<unknown>;
+}): DependencyCheck {
+  return {
+    name: 'postgres',
+    run: async () => {
+      await pool.query('SELECT 1');
+    },
+  };
+}
+
+/**
+ * Redis readiness from the state of the long-lived connections the Socket.IO adapter uses. It is
+ * what matters for live delivery, and it costs nothing (no new connection per poll). Optional: see
+ * DependencyCheck.critical.
+ */
+export function redisStatusCheck(isUp: () => boolean): DependencyCheck {
+  return {
+    name: 'redis',
+    critical: false,
+    run: () => (isUp() ? Promise.resolve() : Promise.reject(new Error('redis not connected'))),
+  };
+}
+
 export function redisCheck(url: string): DependencyCheck {
   return {
     name: 'redis',
+    critical: false,
     run: async () => {
       const client = new Redis(url, {
         lazyConnect: true,
@@ -56,6 +93,7 @@ export function redisCheck(url: string): DependencyCheck {
 export interface CheckResult {
   name: string;
   ok: boolean;
+  critical: boolean;
   /** Error message when not ok. Never includes connection strings. */
   error?: string;
 }
@@ -83,7 +121,7 @@ export async function runChecks(checks: DependencyCheck[]): Promise<CheckResult[
     checks.map(async (check): Promise<CheckResult> => {
       try {
         await withTimeout(check.run(), CHECK_TIMEOUT_MS + 500);
-        return { name: check.name, ok: true };
+        return { name: check.name, ok: true, critical: check.critical ?? true };
       } catch (error) {
         // Only the error class and a short code/message; driver messages for
         // connection failures do not contain the password, but be conservative.
@@ -94,6 +132,7 @@ export async function runChecks(checks: DependencyCheck[]): Promise<CheckResult[
         return {
           name: check.name,
           ok: false,
+          critical: check.critical ?? true,
           error: code ?? (error instanceof Error ? error.name : 'unknown error'),
         };
       }

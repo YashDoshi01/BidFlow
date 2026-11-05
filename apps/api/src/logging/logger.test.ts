@@ -13,6 +13,22 @@ describe('logger', () => {
     assert.ok(typeof entry['time'] === 'string');
   });
 
+  it('adds the base fields (the instance id) to every line, and redacts them too', () => {
+    const lines: string[] = [];
+    const log = createLogger('info', (line) => lines.push(line), {
+      instance: 'api1',
+      apiKey: 'sk-1',
+    });
+    log.info('a');
+    log.warn('b', { requestId: 'r' });
+    for (const line of lines) {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      assert.equal(entry['instance'], 'api1');
+      assert.equal(entry['apiKey'], '[redacted]');
+    }
+    assert.ok(!lines.join('').includes('sk-1'));
+  });
+
   it('honours the level threshold', () => {
     const lines: string[] = [];
     const log = createLogger('warn', (l) => lines.push(l));

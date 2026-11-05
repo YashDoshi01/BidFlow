@@ -33,6 +33,8 @@ export function createLogger(
   write: (line: string) => void = (line) => {
     process.stdout.write(`${line}\n`);
   },
+  /** Fields added to every line (for example the instance id). */
+  base: LogFields = {},
 ): Logger {
   const emit = (lvl: LogLevel, message: string, fields: LogFields = {}): void => {
     if (ORDER[lvl] < ORDER[level]) return;
@@ -41,6 +43,7 @@ export function createLogger(
         time: new Date().toISOString(),
         level: lvl,
         msg: message,
+        ...(redact(base) as LogFields),
         ...(redact(fields) as LogFields),
       }),
     );

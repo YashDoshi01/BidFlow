@@ -3,6 +3,7 @@ import type { Server } from 'socket.io';
 import { createRunningServer } from '../../apps/api/src/createServer.ts';
 import { createPool, type Db } from '../../apps/api/src/db/pool.ts';
 import { createLogger } from '../../apps/api/src/logging/logger.ts';
+import { createRedisPair, type RedisPair } from '../../apps/api/src/modules/realtime/index.ts';
 
 export function testDatabaseUrl(): string {
   const url = process.env['TEST_DATABASE_URL'];
@@ -19,21 +20,37 @@ export interface TestApp {
   logs: Record<string, unknown>[];
   /** The Socket.IO server, for tests that inspect rooms. */
   io: Server;
+  /** Present when started with `redisUrl`: this instance is part of a cluster. */
+  redis: RedisPair | undefined;
   close: () => Promise<void>;
 }
 
-export async function startApp(
-  options: { sessionTtlSeconds?: number; maxRoomsPerSocket?: number } = {},
-): Promise<TestApp> {
+export interface StartAppOptions {
+  sessionTtlSeconds?: number;
+  maxRoomsPerSocket?: number;
+  /** Connect this instance to other instances through Redis (the Socket.IO adapter). */
+  redisUrl?: string;
+  instanceId?: string;
+}
+
+export async function startApp(options: StartAppOptions = {}): Promise<TestApp> {
   const db = createPool(testDatabaseUrl(), 20);
   const logs: Record<string, unknown>[] = [];
-  const logger = createLogger('debug', (line) => {
-    logs.push(JSON.parse(line) as Record<string, unknown>);
-  });
+  const logger = createLogger(
+    'debug',
+    (line) => {
+      logs.push(JSON.parse(line) as Record<string, unknown>);
+    },
+    options.instanceId === undefined ? {} : { instance: options.instanceId },
+  );
+  const redis =
+    options.redisUrl === undefined ? undefined : createRedisPair(options.redisUrl, logger);
   const running = createRunningServer({
     db,
     checks: [],
     logger,
+    ...(redis === undefined ? {} : { redis }),
+    ...(options.instanceId === undefined ? {} : { instanceId: options.instanceId }),
     sessionTtlSeconds: options.sessionTtlSeconds ?? 3600,
     ...(options.maxRoomsPerSocket === undefined
       ? {}
@@ -45,10 +62,12 @@ export async function startApp(
     db,
     logs,
     io: running.realtime.io,
+    redis,
     base: `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`,
     close: async () => {
       // Closing Socket.IO also closes the HTTP server and all WebSocket connections.
       await running.realtime.close();
+      await redis?.close();
       await db.end();
     },
   };

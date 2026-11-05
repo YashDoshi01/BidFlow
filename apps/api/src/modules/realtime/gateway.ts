@@ -1,4 +1,5 @@
 import type http from 'node:http';
+import { createAdapter } from '@socket.io/redis-adapter';
 import { Server, type Socket } from 'socket.io';
 import {
   auctionRoom,
@@ -14,6 +15,7 @@ import type { Logger } from '../../logging/logger.ts';
 import type { AuctionService } from '../auctions/index.ts';
 import type { AuthService } from '../auth/index.ts';
 import type { BidService } from '../bids/index.ts';
+import type { RedisPair } from './redis.ts';
 
 export interface RealtimeDeps {
   auth: AuthService;
@@ -22,6 +24,11 @@ export interface RealtimeDeps {
   logger: Logger;
   /** Upper bound on auction rooms per socket (memory bound; default 20). */
   maxRoomsPerSocket?: number;
+  /**
+   * With Redis, rooms and broadcasts span every API instance (ADR-031). Without it (single
+   * process: most tests) everything stays in this process.
+   */
+  redis?: RedisPair;
 }
 
 export interface Realtime {
@@ -37,6 +44,10 @@ type AckResponse = { ok: true } | { ok: false; error: { code: string; message: s
 // The same shape as a bearer token in the REST API (random, URL-safe, 20-128 chars).
 const TOKEN = /^[A-Za-z0-9_-]{20,128}$/;
 const SNAPSHOT_BIDS = 20;
+// Counts are recomputed this long after the LAST change in a room and sent once (ADR-032).
+const COUNT_DEBOUNCE_MS = 100;
+// How long to wait for the other instances to report their sockets before using the local count.
+const COUNT_CLUSTER_TIMEOUT_MS = 1000;
 
 interface SocketData {
   /** In memory only, never logged: needed to re-check the session on every join. */
@@ -75,6 +86,15 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
     serveClient: false,
   });
 
+  // With the adapter, `io.to(room).emit(...)` reaches the sockets of every instance through
+  // Redis Pub/Sub, and `fetchSockets()` asks every instance. Redis is NOT a source of truth:
+  // it forwards messages that PostgreSQL has already committed, and it can lose them.
+  if (deps.redis) {
+    io.adapter(
+      createAdapter(deps.redis.pub, deps.redis.sub, { requestsTimeout: COUNT_CLUSTER_TIMEOUT_MS }),
+    );
+  }
+
   const authenticateHandshake = async (
     socket: Socket,
     next: (error?: Error) => void,
@@ -106,15 +126,39 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
     void authenticateHandshake(socket, next);
   });
 
-  const roomSize = (room: string): number => io.sockets.adapter.rooms.get(room)?.size ?? 0;
+  const localRoomSize = (room: string): number => io.sockets.adapter.rooms.get(room)?.size ?? 0;
 
-  // Approximate and per instance until the Redis adapter (Phase 4): it counts the
-  // sockets this process holds.
-  const announceCount = (auctionId: string, count: number): void => {
-    io.to(auctionRoom(auctionId)).emit(
-      'participant.count',
-      buildParticipantCountEvent(auctionId, count),
-    );
+  // Number of sockets in the room across ALL instances. If the other instances cannot be
+  // asked (Redis down, or too slow) this falls back to the sockets on this instance: the
+  // number is a display value, and a wrong one is better than none.
+  const clusterRoomSize = async (room: string): Promise<number> => {
+    try {
+      return (await io.in(room).fetchSockets()).length;
+    } catch {
+      return localRoomSize(room);
+    }
+  };
+
+  // One pending count per room, per instance. This map only rate-limits an approximate
+  // display value; nothing a bid depends on reads it, and losing it (a restart) loses
+  // at most one count message (ADR-032).
+  const countTimers = new Map<string, NodeJS.Timeout>();
+  const scheduleCount = (auctionId: string): void => {
+    if (countTimers.has(auctionId)) return;
+    const timer = setTimeout(() => {
+      countTimers.delete(auctionId);
+      void clusterRoomSize(auctionRoom(auctionId)).then(
+        (count) => {
+          io.to(auctionRoom(auctionId)).emit(
+            'participant.count',
+            buildParticipantCountEvent(auctionId, count),
+          );
+        },
+        () => undefined,
+      );
+    }, COUNT_DEBOUNCE_MS);
+    timer.unref();
+    countTimers.set(auctionId, timer);
   };
 
   /**
@@ -178,7 +222,7 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
           ]);
           s.emit('auction.snapshot', buildSnapshotEvent(auctionId, auction, recent.items));
           ack({ ok: true });
-          announceCount(auctionId, roomSize(room));
+          scheduleCount(auctionId);
         },
         ack,
       )(socket, payload);
@@ -195,7 +239,7 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
           const room = auctionRoom(parsed.data.auctionId);
           if (s.rooms.has(room)) {
             await s.leave(room);
-            announceCount(parsed.data.auctionId, roomSize(room));
+            scheduleCount(parsed.data.auctionId);
           }
           ack({ ok: true }); // leaving a room you are not in is not an error
         },
@@ -203,16 +247,16 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
       )(socket, payload);
     });
 
-    // Socket.IO removes the socket from its rooms itself on disconnect; the only
-    // job here is to tell the people still in those rooms. During `disconnecting`
-    // the socket is still a member, hence the `- 1`.
-    socket.on('disconnecting', () => {
+    // Socket.IO removes the socket from its rooms itself on disconnect; the only job here
+    // is to tell the people still in those rooms. The count is taken after the debounce,
+    // when the socket is already gone, so it needs no special case.
+    socket.on('disconnecting', (reason: string) => {
+      logger.info('socket disconnected', { socketId: socket.id, reason });
       for (const room of socket.rooms) {
-        if (room.startsWith('auction:')) {
-          announceCount(room.slice('auction:'.length), Math.max(0, roomSize(room) - 1));
-        }
+        if (room.startsWith('auction:')) scheduleCount(room.slice('auction:'.length));
       }
     });
+    logger.info('socket connected', { socketId: socket.id, anonymous: data.userId === undefined });
   });
 
   const publisher: EventPublisher = {
@@ -224,11 +268,16 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
   return {
     io,
     publisher,
-    close: () =>
-      new Promise<void>((resolve) => {
+    close: () => {
+      countTimers.forEach((timer) => {
+        clearTimeout(timer);
+      });
+      countTimers.clear();
+      return new Promise<void>((resolve) => {
         void io.close(() => {
           resolve();
         });
-      }),
+      });
+    },
   };
 }

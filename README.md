@@ -14,7 +14,8 @@ The full plan is in `BidFlow_Implementation_and_Learning_Plan.md`. Working rules
 | 1     | Done - users, sessions, auctions, REST foundation |
 | 2     | Done - bid engine, idempotency                    |
 | 3     | Done - WebSocket rooms, live bids, React client   |
-| 4-9   | Not started                                       |
+| 4     | Done - Redis adapter, NGINX, two instances        |
+| 5-9   | Not started                                       |
 
 Phase 1 added PostgreSQL migrations, registration/login/logout with server-side sessions, and auctions you
 can create, edit (while draft), publish, list and fetch. Phase 2 adds `POST /auctions/:id/bids` with
@@ -51,17 +52,19 @@ the database volume.
 
 ## Commands
 
-| Command                         | What it does                                                                                                                                       |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run typecheck`             | `tsc --noEmit`, strict mode                                                                                                                        |
-| `npm run lint`                  | ESLint (typescript-eslint strict, type-checked)                                                                                                    |
-| `npm run format:check`          | Prettier check (`npm run format` to fix)                                                                                                           |
-| `npm test`                      | Unit tests with the built-in `node:test` runner                                                                                                    |
-| `npm run check:infra`           | Real connectivity check against Postgres and Redis                                                                                                 |
-| `npm run db:migrate`            | Applies `db/migrations/*.sql` to `DATABASE_URL`                                                                                                    |
-| `npm run test:integration`      | Real PostgreSQL + real WebSocket tests in a throwaway container (needs Docker; never touches your dev database)                                    |
-| `npm run test:e2e`              | Real-browser tests (Microsoft Edge via playwright-core) against the same kind of throwaway stack. Set `E2E_SCREENSHOT_DIR` to keep the screenshots |
-| `npm run dev:web` / `build:web` | Vite dev server / production build of `apps/web`                                                                                                   |
+| Command                               | What it does                                                                                                                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`                   | `tsc --noEmit`, strict mode                                                                                                                                                               |
+| `npm run lint`                        | ESLint (typescript-eslint strict, type-checked)                                                                                                                                           |
+| `npm run format:check`                | Prettier check (`npm run format` to fix)                                                                                                                                                  |
+| `npm test`                            | Unit tests with the built-in `node:test` runner                                                                                                                                           |
+| `npm run check:infra`                 | Real connectivity check against Postgres and Redis                                                                                                                                        |
+| `npm run db:migrate`                  | Applies `db/migrations/*.sql` to `DATABASE_URL`                                                                                                                                           |
+| `npm run test:integration`            | Real PostgreSQL + real WebSocket tests in a throwaway container (needs Docker; never touches your dev database)                                                                           |
+| `npm run test:e2e`                    | Real-browser tests (Microsoft Edge via playwright-core) against the same kind of throwaway stack. Set `E2E_SCREENSHOT_DIR` to keep the screenshots                                        |
+| `npm run test:cluster`                | Builds the API image and runs NGINX + 2 API containers + PostgreSQL + Redis (a throwaway project), then topology, browser, restart and outage tests (about 1 minute plus the image build) |
+| `npm run cluster:up` / `cluster:down` | A local two-instance stack for you to look at (run `npm run build:web` first); see `docs/OPERATIONS.md`                                                                                   |
+| `npm run dev:web` / `build:web`       | Vite dev server / production build of `apps/web`                                                                                                                                          |
 
 The API runs TypeScript directly (Node 24 type stripping): there is no build step for the API.
 Imports therefore use `.ts` extensions.
@@ -71,6 +74,7 @@ Imports therefore use `.ts` extensions.
 ```
 apps/api/src/        app.ts, createServer.ts, server.ts, services.ts, config/, db/, http/, logging/,
                      health/, events/ (event contract), modules/auth|auctions|bids|realtime
+infra/docker/, nginx/  API image, NGINX config; compose.cluster.yaml = NGINX + api1 + api2 + PostgreSQL + Redis
 apps/web/            React + Vite client (src/room = room state + socket hook, src/pages)
 db/migrations/       numbered SQL files
 infra/               compose.yaml (dev PostgreSQL + Redis), compose.test.yaml (throwaway test DB)
@@ -97,9 +101,9 @@ docs/                decisions, architecture, product rules, learning log, bugs,
 ## Known gaps
 
 - Live events are best effort (published right after the commit, not durable, concurrent bids may arrive out of
-  order); clients recover with the snapshot (`docs/EVENTS.md`). `participant.count` is per server instance until
-  Phase 4. No Content-Security-Policy and no rate limiting yet (Phase 8). The browser tests need Microsoft Edge.
-- Redis is only health-checked so far; no feature uses it until Phase 4.
+  order); clients recover with the snapshot (`docs/EVENTS.md`). With two instances, a Redis outage loses events for
+  sockets on the other instance until they re-join (`docs/OPERATIONS.md`). No Content-Security-Policy, no TLS and no
+  rate limiting yet (Phase 8). The browser tests need Microsoft Edge.
 - The development stack (`npm run infra:up`) was started by the owner; `docker ps` showed both
   containers running, but the agent did not run `check:infra` against it (it does not touch the
   owner's stack). The throwaway test database from `infra/compose.test.yaml` started healthy twice.
