@@ -10,9 +10,14 @@ export interface BidRow {
   amount: string;
   bid_sequence: string;
   accepted_at: Date;
+  /** The bidder's public display name (ADR-024). Never the email. */
+  bidder_display_name: string;
 }
 
-const COLUMNS = 'id, auction_id, bidder_id, amount, bid_sequence, accepted_at';
+// Read-only join of ONE column of users (display_name) so a bid can be shown with
+// its bidder's public name. The bids module never reads any other user column.
+const SELECT_BID = `b.id, b.auction_id, b.bidder_id, b.amount, b.bid_sequence, b.accepted_at,
+  u.display_name AS bidder_display_name`;
 
 export interface BoundaryDecision {
   /** The single timestamp for every time decision in this transaction (full microsecond precision, as text). */
@@ -57,9 +62,12 @@ export async function insertBid(
   },
 ): Promise<BidRow> {
   const { rows } = await client.query<BidRow>(
-    `INSERT INTO bids (auction_id, bidder_id, amount, bid_sequence, accepted_at)
-     VALUES ($1, $2, $3, $4, $5::timestamptz)
-     RETURNING ${COLUMNS}`,
+    `WITH b AS (
+       INSERT INTO bids (auction_id, bidder_id, amount, bid_sequence, accepted_at)
+       VALUES ($1, $2, $3, $4, $5::timestamptz)
+       RETURNING *
+     )
+     SELECT ${SELECT_BID} FROM b JOIN users u ON u.id = b.bidder_id`,
     [b.auctionId, b.bidderId, b.amount, b.bidSequence, b.acceptedAt],
   );
   return rows[0] as BidRow;
@@ -73,13 +81,13 @@ export async function listBids(
   let cursor = '';
   if (f.beforeSequence !== undefined) {
     params.push(f.beforeSequence);
-    cursor = 'AND bid_sequence < $2';
+    cursor = 'AND b.bid_sequence < $2';
   }
   params.push(f.limit);
   const { rows } = await db.query<BidRow>(
-    `SELECT ${COLUMNS} FROM bids
-      WHERE auction_id = $1 ${cursor}
-      ORDER BY bid_sequence DESC
+    `SELECT ${SELECT_BID} FROM bids b JOIN users u ON u.id = b.bidder_id
+      WHERE b.auction_id = $1 ${cursor}
+      ORDER BY b.bid_sequence DESC
       LIMIT $${String(params.length)}`,
     params,
   );

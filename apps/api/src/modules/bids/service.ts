@@ -25,6 +25,7 @@ export interface BidView {
   id: string;
   auctionId: string;
   bidderId: string;
+  bidderDisplayName: string;
   amount: string;
   bidSequence: string;
   acceptedAt: string;
@@ -60,6 +61,7 @@ function toBidView(r: repo.BidRow): BidView {
     id: r.id,
     auctionId: r.auction_id,
     bidderId: r.bidder_id,
+    bidderDisplayName: r.bidder_display_name,
     amount: r.amount,
     bidSequence: r.bid_sequence,
     acceptedAt: r.accepted_at.toISOString(),

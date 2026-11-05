@@ -107,6 +107,7 @@ describe('bid engine (real PostgreSQL)', () => {
       assert.equal(res.body.bid.amount, '10.00');
       assert.equal(res.body.bid.bidSequence, '1');
       assert.equal(res.body.bid.bidderId, buyer().id);
+      assert.equal(res.body.bid.bidderDisplayName, 'buyer0'); // public name, set at registration
       assert.equal(res.body.auction.currentPrice, '10.00');
       assert.equal(res.body.auction.minimumNextBid, '11.00');
       const view = await api('GET', `/auctions/${id}`);
@@ -548,6 +549,15 @@ describe('bid engine (real PostgreSQL)', () => {
         pages += 1;
       } while (cursor && pages < 10);
       assert.deepEqual(seen, ['5', '4', '3', '2', '1']);
+      // Names are shown (ADR-024); emails and other user fields never are.
+      const all = await api('GET', `/auctions/${id}/bids?limit=50`);
+      assert.deepEqual(
+        all.body.items.map((b: { bidderDisplayName: string }) => b.bidderDisplayName),
+        ['buyer4', 'buyer3', 'buyer2', 'buyer1', 'buyer0'],
+      );
+      const text = JSON.stringify(all.body);
+      for (let i = 0; i < 5; i += 1) assert.ok(!text.includes('@example.com'));
+      assert.ok(!text.includes('password'));
       assert.equal((await api('GET', `/auctions/${id}/bids?limit=51`)).status, 400);
       assert.equal((await api('GET', `/auctions/${id}/bids?cursor=%25`)).status, 400);
     });
