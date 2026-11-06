@@ -7,4 +7,15 @@ export {
   type AuctionView,
 } from './service.ts';
 // Narrow write access used by the bids module's transaction (ADR-017).
-export { applyAcceptedBid, lockAuction, type AuctionRow } from './repository.ts';
+export {
+  activate,
+  applyAcceptedBid,
+  extendEnd,
+  finish,
+  lockAuction,
+  lockNextDue,
+  markEndingSoonNotified,
+  type AuctionRow,
+  type DueKind,
+  type TransitionResult,
+} from './repository.ts';

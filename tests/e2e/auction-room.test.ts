@@ -68,7 +68,10 @@ describe('auction room in a real browser (Edge, real API, real PostgreSQL)', () 
   it('signs in through the real form, then shows the live auction from the snapshot', async () => {
     const id = await liveAuction(api, seller.token, { title: 'Brass lamp' });
     const { page, problems } = await open({});
-    await page.getByRole('link', { name: 'Sign in' }).click();
+    await page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('link', { name: 'Sign in' })
+      .click();
     await page.getByLabel('Email').fill(ann.email);
     await page.getByLabel(/Password/).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();

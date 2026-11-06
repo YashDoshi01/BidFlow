@@ -52,7 +52,9 @@ try {
   // `--e2e` runs the real-browser tests in tests/e2e instead of tests/integration.
   const args = process.argv.slice(2);
   const e2e = args.includes('--e2e');
-  const extra = args.filter((a) => a !== '--e2e');
+  // `--files=<glob>` runs only those test files (used by mutation testing to run the relevant ones).
+  const filesArg = args.find((a) => a.startsWith('--files='));
+  const extra = args.filter((a) => a !== '--e2e' && !a.startsWith('--files='));
   exitCode = await new Promise<number>((resolve) => {
     const child = spawn(
       process.execPath,
@@ -61,7 +63,11 @@ try {
         '--test-reporter=spec',
         '--test-concurrency=1',
         ...extra,
-        e2e ? 'tests/e2e/**/*.test.ts' : 'tests/integration/**/*.test.ts',
+        filesArg
+          ? filesArg.slice('--files='.length)
+          : e2e
+            ? 'tests/e2e/**/*.test.ts'
+            : 'tests/integration/**/*.test.ts',
       ],
       {
         cwd: root,

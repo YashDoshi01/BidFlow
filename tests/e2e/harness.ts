@@ -82,6 +82,8 @@ export async function openPage(
     colorScheme?: 'light' | 'dark';
     viewport?: { width: number; height: number };
     hash?: string;
+    /** Makes the BROWSER clock wrong by this many ms (to test that countdowns follow the server). */
+    clockOffsetMs?: number;
   } = {},
 ): Promise<Watched> {
   const context = await h.browser.newContext({
@@ -89,6 +91,9 @@ export async function openPage(
     viewport: options.viewport ?? { width: 1100, height: 900 },
   });
   const page = await context.newPage();
+  if (options.clockOffsetMs !== undefined) {
+    await page.clock.install({ time: Date.now() + options.clockOffsetMs });
+  }
   const problems: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') problems.push(`console.error: ${msg.text()}`);

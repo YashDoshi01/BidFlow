@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { createPool, pgCode, pgConstraint, type Db } from '../../apps/api/src/db/pool.ts';
 import { purgeExpiredIdempotencyRecords } from '../../apps/api/src/modules/bids/index.ts';
-import { resetData, testDatabaseUrl } from './helpers.ts';
+import { acceptBidRaw, resetData, testDatabaseUrl } from './helpers.ts';
 
 describe('bid constraints (raw SQL, application bypassed)', () => {
   let db: Db;
@@ -65,15 +65,7 @@ describe('bid constraints (raw SQL, application bypassed)', () => {
     const client = await db.connect();
     try {
       await client.query('BEGIN');
-      const b = await client.query<{ id: string }>(
-        `INSERT INTO bids (auction_id, bidder_id, amount, bid_sequence, accepted_at)
-         VALUES ($1, $2, 10, 1, clock_timestamp()) RETURNING id`,
-        [a, buyerId],
-      );
-      await client.query(
-        'UPDATE auctions SET current_price = 10, highest_bid_id = $2, bid_sequence = 1 WHERE id = $1',
-        [a, b.rows[0]?.id],
-      );
+      await acceptBidRaw(client, { auctionId: a, bidderId: buyerId, amount: '10.00' });
       await client.query('COMMIT');
     } finally {
       client.release();
@@ -89,8 +81,8 @@ describe('bid constraints (raw SQL, application bypassed)', () => {
       ['ENDED', "now() - interval '10 minutes', now() + interval '2 hours'"],
     ] as const) {
       const { rows } = await db.query<{ id: string }>(
-        `INSERT INTO auctions (seller_id, title, starting_price, current_price, status, starts_at, ends_at)
-         VALUES ($1, 't', 10, 10, $2, ${sql}) RETURNING id`,
+        `INSERT INTO auctions (seller_id, title, starting_price, current_price, status, starts_at, ends_at, ended_at)
+         VALUES ($1, 't', 10, 10, $2, ${sql}, CASE WHEN $2 = 'ENDED' THEN now() END) RETURNING id`,
         [sellerId, status],
       );
       await assert.rejects(insertBid((rows[0] as { id: string }).id), /not LIVE/, status);
@@ -163,11 +155,16 @@ describe('bid constraints (raw SQL, application bypassed)', () => {
       ),
       /must reference the latest bid/,
     );
-    // the legitimate update works
-    await db.query(
-      'UPDATE auctions SET current_price = 10, highest_bid_id = $2, bid_sequence = 1 WHERE id = $1',
-      [a, bidId],
-    );
+    // the legitimate transaction works: bid, both counters, price, and the outbox event
+    const fresh = await live();
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await acceptBidRaw(client, { auctionId: fresh, bidderId: buyerId, amount: '10.00' });
+      await client.query('COMMIT');
+    } finally {
+      client.release();
+    }
   });
 
   it('two inserts for the same position cannot both commit, even without the row lock', async () => {

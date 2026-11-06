@@ -54,10 +54,21 @@ export async function startCluster(options: {
   if (!image) throw new Error('API_IMAGE is required');
   if (options.build ?? true) await buildApiImage(image);
   const compose = composeRunner(project, env);
-  // 1. the databases, 2. migrations (one-shot), 3. the API containers, then NGINX.
+  // 1. the databases, 2. migrations (one-shot), 3. the API containers and the outbox workers, then NGINX.
   await compose('up', '-d', '--wait', 'postgres', 'redis');
   await compose('run', '--rm', 'migrate');
-  await compose('up', '-d', '--wait', 'api1', 'api2', 'nginx');
+  await compose(
+    'up',
+    '-d',
+    '--wait',
+    'api1',
+    'api2',
+    'worker1',
+    'worker2',
+    'scheduler1',
+    'scheduler2',
+    'nginx',
+  );
   const [nginx, api1, api2, postgres] = await Promise.all([
     hostPort(compose, 'nginx', '80'),
     hostPort(compose, 'api1', '3000'),

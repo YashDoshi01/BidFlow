@@ -8,3 +8,5 @@ export {
   type BidView,
 } from './service.ts';
 export { purgeExpired as purgeExpiredIdempotencyRecords } from './idempotency.ts';
+// Read access used by the lifecycle worker when an auction ends (winner, bidders to notify).
+export { distinctBidderIds, findBid, type BidRow } from './repository.ts';

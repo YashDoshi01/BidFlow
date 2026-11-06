@@ -22,6 +22,8 @@ const SELECT_BID = `b.id, b.auction_id, b.bidder_id, b.amount, b.bid_sequence, b
 export interface BoundaryDecision {
   /** The single timestamp for every time decision in this transaction (full microsecond precision, as text). */
   ts: string;
+  /** The same instant in whole milliseconds since the epoch (for the anti-sniping arithmetic). */
+  ms: string;
   started: boolean;
   open: boolean;
 }
@@ -43,7 +45,8 @@ export async function readBoundary(
 ): Promise<BoundaryDecision> {
   const { rows } = await client.query<BoundaryDecision>(
     `WITH t AS MATERIALIZED (SELECT clock_timestamp() AS ts)
-     SELECT t.ts::text AS ts, t.ts >= a.starts_at AS started, t.ts < a.ends_at AS open
+     SELECT t.ts::text AS ts, floor(extract(epoch from t.ts) * 1000)::bigint::text AS ms,
+            t.ts >= a.starts_at AS started, t.ts < a.ends_at AS open
        FROM t, auctions a
       WHERE a.id = $1`,
     [auctionId],
@@ -92,4 +95,21 @@ export async function listBids(
     params,
   );
   return rows;
+}
+
+export async function findBid(db: Queryable, id: string): Promise<BidRow | undefined> {
+  const { rows } = await db.query<BidRow>(
+    `SELECT ${SELECT_BID} FROM bids b JOIN users u ON u.id = b.bidder_id WHERE b.id = $1`,
+    [id],
+  );
+  return rows[0];
+}
+
+/** Everyone who placed at least one bid on the auction, once each (used to notify at the end). */
+export async function distinctBidderIds(db: Queryable, auctionId: string): Promise<string[]> {
+  const { rows } = await db.query<{ bidder_id: string }>(
+    'SELECT DISTINCT bidder_id FROM bids WHERE auction_id = $1 ORDER BY bidder_id',
+    [auctionId],
+  );
+  return rows.map((r) => r.bidder_id);
 }

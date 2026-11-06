@@ -41,6 +41,8 @@ export const listQuerySchema = z
     status: z.enum(AUCTION_STATUSES).optional(),
     sellerId: uuid.optional(),
     mine: z.enum(['true', 'false']).optional(),
+    /** Title search: 1-100 characters after trimming, matched literally. */
+    q: z.string().trim().min(1).max(100).optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
     cursor: z.string().max(100).optional(),
   })

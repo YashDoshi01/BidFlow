@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { createPool, pgCode, pgConstraint, type Db } from '../../apps/api/src/db/pool.ts';
-import { resetData, testDatabaseUrl } from './helpers.ts';
+import { endAuctionRaw, resetData, testDatabaseUrl } from './helpers.ts';
 
 describe('database constraints (raw SQL, application bypassed)', () => {
   let db: Db;
@@ -108,30 +108,42 @@ describe('database constraints (raw SQL, application bypassed)', () => {
     };
     const move = (id: string, status: string): Promise<unknown> =>
       db.query('UPDATE auctions SET status = $2 WHERE id = $1', [id, status]);
+    // Since Phase 6 an auction cannot go LIVE before starts_at nor end before ends_at, so the
+    // transition tests use auctions that started 3 hours ago; `endsIn` decides if they are over.
+    const newStarted = async (endsIn: string, status = 'DRAFT'): Promise<string> => {
+      const { rows } = await db.query<{ id: string }>(
+        `INSERT INTO auctions
+           (seller_id, title, starting_price, current_price, minimum_increment, currency, status, starts_at, ends_at)
+         VALUES ($1, 't', 10, 10, 1, 'USD', $2, now() - interval '3 hours', now() + $3::interval)
+         RETURNING id`,
+        [sellerId, status, endsIn],
+      );
+      return (rows[0] as { id: string }).id;
+    };
 
     it('allows the documented transitions', async () => {
-      const a = await newAuction();
+      const a = await newStarted('-1 hour');
       await move(a, 'SCHEDULED');
       await move(a, 'LIVE');
-      await move(a, 'ENDED');
+      await endAuctionRaw(db, a); // LIVE -> ENDED, with its time, winner and event
     });
 
     it('rejects skipping states and leaving terminal states', async () => {
       const draft = await newAuction();
       await assert.rejects(move(draft, 'ENDED'), /illegal auction status transition/);
-      const ended = await newAuction('DRAFT');
+      const ended = await newStarted('-1 hour');
       await move(ended, 'LIVE');
-      await move(ended, 'ENDED');
+      await endAuctionRaw(db, ended);
       await assert.rejects(move(ended, 'LIVE'), /illegal auction status transition/);
       await assert.rejects(move(ended, 'CANCELLED'), /illegal auction status transition/);
-      const live = await newAuction();
+      const live = await newStarted('2 hours');
       await move(live, 'LIVE');
       await assert.rejects(move(live, 'DRAFT'), /illegal auction status transition/);
       await assert.rejects(move(live, 'SCHEDULED'), /illegal auction status transition/);
     });
 
-    it('freezes the sale terms after publication; the end time may move, the price may not move alone', async () => {
-      const id = await newAuction();
+    it('freezes the sale terms after publication; neither the end time nor the price moves alone', async () => {
+      const id = await newStarted('2 hours');
       await move(id, 'LIVE');
       for (const set of [
         "title = 'x'",
@@ -148,9 +160,14 @@ describe('database constraints (raw SQL, application bypassed)', () => {
           set,
         );
       }
-      await db.query("UPDATE auctions SET ends_at = ends_at + interval '2 minutes' WHERE id = $1", [
-        id,
-      ]);
+      // Since Phase 6 the end time moves only as a counted anti-sniping extension (see
+      // lifecycle-constraints.test.ts), never by a plain update.
+      await assert.rejects(
+        db.query("UPDATE auctions SET ends_at = ends_at + interval '2 minutes' WHERE id = $1", [
+          id,
+        ]),
+        /every extension must be counted/,
+      );
       // Since migration 0003: price changes only together with a new highest bid.
       await assert.rejects(
         db.query('UPDATE auctions SET current_price = 12 WHERE id = $1', [id]),

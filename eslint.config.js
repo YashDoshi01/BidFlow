@@ -57,6 +57,9 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
+      // node:assert's assert.equal(x?.y, ...) narrows x afterwards, so later x?.z is reported as
+      // "unnecessary" although it reads exactly as the assertion intends. Source code keeps the rule.
+      '@typescript-eslint/no-unnecessary-condition': 'off',
     },
   },
   {

@@ -5,13 +5,16 @@ import { createBidService } from '../../apps/api/src/modules/bids/index.ts';
 import { requestHash } from '../../apps/api/src/modules/bids/service.ts';
 import { toMinorUnits } from '../../apps/api/src/money.ts';
 import {
+  acceptBidRaw,
   auctionBody,
+  endAuctionRaw,
   liveAuction,
   makeClient,
   newKey,
   newUser,
   placeBid,
   resetData,
+  setAuctionEnd,
   sleep,
   startApp,
   type Api,
@@ -31,7 +34,7 @@ describe('bid engine (real PostgreSQL)', () => {
   let buyers: User[];
 
   before(async () => {
-    app = await startApp();
+    app = await startApp({ outbox: false }); // these tests do not need live events; the publisher would also share the pool this file inspects
     api = makeClient(app.base);
     await resetData(app.db);
     seller = await newUser(api, 'seller');
@@ -190,15 +193,12 @@ describe('bid engine (real PostgreSQL)', () => {
       assert.equal(notLive.body.error.code, 'AUCTION_NOT_LIVE');
 
       const id = await liveAuction(api, seller.token);
-      await app.db.query(
-        "UPDATE auctions SET ends_at = now() - interval '1 second' WHERE id = $1",
-        [id],
-      );
+      await setAuctionEnd(app.db, id, "now() - interval '1 second'");
       const late = await placeBid(api, buyer().token, id, '10.00');
       assert.equal(late.status, 409);
       assert.equal(late.body.error.code, 'AUCTION_ENDED');
 
-      await app.db.query("UPDATE auctions SET status = 'ENDED' WHERE id = $1", [id]);
+      await endAuctionRaw(app.db, id);
       assert.equal(
         (await placeBid(api, buyer().token, id, '10.00')).body.error.code,
         'AUCTION_ENDED',
@@ -473,15 +473,7 @@ describe('bid engine (real PostgreSQL)', () => {
         });
         await sleep(400);
         assert.equal(settled, false, 'the bid must wait for the auction lock');
-        const bid = await holder.query<{ id: string }>(
-          `INSERT INTO bids (auction_id, bidder_id, amount, bid_sequence, accepted_at)
-           VALUES ($1, $2, 20.00, 1, clock_timestamp()) RETURNING id`,
-          [id, buyer(1).id],
-        );
-        await holder.query(
-          `UPDATE auctions SET current_price = 20.00, highest_bid_id = $2, bid_sequence = 1 WHERE id = $1`,
-          [id, bid.rows[0]?.id],
-        );
+        await acceptBidRaw(holder, { auctionId: id, bidderId: buyer(1).id, amount: '20.00' });
         await holder.query('COMMIT');
         const res = await pending;
         assert.equal(res.status, 409, JSON.stringify(res.body));
@@ -499,10 +491,7 @@ describe('bid engine (real PostgreSQL)', () => {
     // say "open" (transaction start); clock_timestamp() says "ended".
     it('a request that waited for the lock past the end time is rejected as ended', async () => {
       const id = await liveAuction(api, seller.token);
-      await app.db.query(
-        "UPDATE auctions SET ends_at = clock_timestamp() + interval '1500 milliseconds' WHERE id = $1",
-        [id],
-      );
+      await setAuctionEnd(app.db, id, "clock_timestamp() + interval '1500 milliseconds'");
       const holder = await app.db.connect();
       try {
         await holder.query('BEGIN');

@@ -7,9 +7,11 @@ import { bidAcceptedEventSchema } from '../../apps/api/src/events/events.ts';
 import { liveAuction, makeClient, newUser } from '../integration/helpers.ts';
 import { TestSocket } from '../integration/realtime-helpers.ts';
 import {
+  bidWithRetry,
   bothInstancesInRotation,
   compose,
   databaseUrl,
+  freshPool,
   directUrl,
   logsOf,
   readiness,
@@ -23,51 +25,6 @@ import {
 interface User {
   token: string;
   id: string;
-}
-
-/** POST a bid; retry the SAME Idempotency-Key on network errors and 5xx, as a real client would. */
-async function bidWithRetry(
-  base: string,
-  token: string,
-  auctionId: string,
-  amount: string,
-  key: string,
-): Promise<{ status: number; attempts: number }> {
-  for (let attempt = 1; attempt <= 60; attempt += 1) {
-    try {
-      const res = await fetch(`${base}/auctions/${auctionId}/bids`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          'Idempotency-Key': key,
-        },
-        body: JSON.stringify({ amount }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (res.status < 500) return { status: res.status, attempts: attempt };
-    } catch {
-      // connection refused / reset while a container restarts: try again
-    }
-    await sleep(150);
-  }
-  throw new Error(`bid ${amount} never got a definitive answer`);
-}
-
-/** A pool for the CURRENT published PostgreSQL port (Docker may change it when the container restarts). */
-async function freshPool(): Promise<Pool> {
-  const out = (await compose('port', 'postgres', '5432')).trim();
-  const port = /:(\d+)\s*$/m.exec(out)?.[1];
-  if (!port) throw new Error('no published PostgreSQL port');
-  const user = process.env['POSTGRES_USER'] ?? '';
-  const password = process.env['POSTGRES_PASSWORD'] ?? '';
-  const db = process.env['POSTGRES_DB'] ?? '';
-  const next = new Pool({
-    connectionString: `postgres://${user}:${password}@127.0.0.1:${port}/${db}`,
-    max: 5,
-  });
-  next.on('error', () => undefined);
-  return next;
 }
 
 describe('cluster resilience (real containers)', () => {
@@ -110,14 +67,19 @@ describe('cluster resilience (real containers)', () => {
       await compose('start', 'redis').catch(() => undefined);
     });
 
-    it('bids keep working, both instances stay in rotation ("degraded", HTTP 200), neither process restarts, and delivery resumes by itself', async () => {
+    it('bids keep working, both instances stay in rotation ("degraded", HTTP 200), no process restarts, and the events that could not be published are delivered LATE, after Redis returns', async () => {
       await bothInstancesInRotation();
       const id = await liveAuction(viaNginx, seller.token);
       const { api1, api2, spare } = await socketsOnBothInstances();
       open.push(api1, api2, ...spare);
       await api1.join(id);
       await api2.join(id);
-      const started = [await startedAt('api1'), await startedAt('api2')];
+      const started = [
+        await startedAt('api1'),
+        await startedAt('api2'),
+        await startedAt('worker1'),
+        await startedAt('worker2'),
+      ];
 
       await compose('stop', 'redis');
       // Readiness reports Redis as down but stays 200: PostgreSQL is the critical dependency.
@@ -152,7 +114,8 @@ describe('cluster resilience (real containers)', () => {
       }
       assert.deepEqual([...seen].sort(), ['api1', 'api2']);
 
-      // A bid is a PostgreSQL transaction: it commits. Only the instance that took it can tell its own sockets.
+      // A bid is a PostgreSQL transaction: it commits, and its event is written to the outbox in the
+      // same transaction. Redis is involved in neither.
       const direct1 = makeClient(await directUrl('api1'));
       const res = await direct1('POST', `/auctions/${id}/bids`, {
         token: buyer(0).token,
@@ -160,11 +123,19 @@ describe('cluster resilience (real containers)', () => {
         headers: { 'Idempotency-Key': 'outage-key-0001' },
       });
       assert.equal(res.status, 201);
-      assert.equal(bidAcceptedEventSchema.parse(await api1.next('bid.accepted')).sequence, 1);
-      assert.equal(
-        (await api2.quiet(800, 'bid.accepted')).length,
-        0,
-        'cross-instance delivery cannot work without Redis',
+
+      // Nobody hears it for now: the workers cannot reach Redis. (Phase 4: sockets on the same
+      // instance still did, the others never would. Now the event is DURABLE and merely late.)
+      assert.equal((await api1.quiet(1500, 'bid.accepted')).length, 0);
+      assert.equal((await api2.quiet(10, 'bid.accepted')).length, 0);
+      const waiting = await pool.query<{ status: string }>(
+        'SELECT status FROM outbox_events WHERE auction_id = $1',
+        [id],
+      );
+      assert.equal(waiting.rows.length, 1, 'the event is in the outbox');
+      assert.ok(
+        ['pending', 'processing'].includes((waiting.rows[0] as { status: string }).status),
+        'and it is not published',
       );
 
       await compose('start', 'redis');
@@ -176,28 +147,41 @@ describe('cluster resilience (real containers)', () => {
         return r1.body?.status === 'ready' && r2.body?.status === 'ready';
       });
 
-      // Without any restart or manual step, the instances find each other again. Bids are
-      // placed until the one on the OTHER instance is heard (re-subscribing takes a moment).
-      let heard = false;
-      for (let n = 0; n < 40 && !heard; n += 1) {
-        const amount = `${String(12 + n * 2)}.00`;
-        const r = await direct1('POST', `/auctions/${id}/bids`, {
-          token: buyer(1).token,
-          body: { amount },
-          headers: { 'Idempotency-Key': `outage-key-${String(1000 + n)}` },
-        });
-        assert.equal(r.status, 201);
-        try {
-          await api2.next('bid.accepted', (p) => p.data.amount === amount, 1500);
-          heard = true;
-        } catch {
-          // not yet
-        }
+      // Without any restart or manual step, the workers retry (with backoff) and the event reaches
+      // the sockets on BOTH instances, exactly once.
+      assert.equal(
+        bidAcceptedEventSchema.parse(await api1.next('bid.accepted', undefined, 60_000)).sequence,
+        1,
+      );
+      assert.equal(
+        bidAcceptedEventSchema.parse(await api2.next('bid.accepted', undefined, 10_000)).sequence,
+        1,
+      );
+      const second = await direct1('POST', `/auctions/${id}/bids`, {
+        token: buyer(1).token,
+        body: { amount: '12.00' },
+        headers: { 'Idempotency-Key': 'outage-key-0002' },
+      });
+      assert.equal(second.status, 201);
+      for (const socket of [api1, api2]) {
+        assert.equal(bidAcceptedEventSchema.parse(await socket.next('bid.accepted')).sequence, 2);
+        assert.equal((await socket.quiet(300, 'bid.accepted')).length, 0);
       }
-      assert.ok(heard, 'delivery between instances did not resume after Redis came back');
+      await until('the outbox is empty again', async () => {
+        const left = await pool.query("SELECT 1 FROM outbox_events WHERE status <> 'published'");
+        return left.rows.length === 0;
+      });
 
       // No process was restarted by the outage; the logs tell the story.
-      assert.deepEqual([await startedAt('api1'), await startedAt('api2')], started);
+      assert.deepEqual(
+        [
+          await startedAt('api1'),
+          await startedAt('api2'),
+          await startedAt('worker1'),
+          await startedAt('worker2'),
+        ],
+        started,
+      );
       for (const service of ['api1', 'api2']) {
         const msgs = (await logsOf(service)).map((l) => l.msg);
         assert.ok(
@@ -206,6 +190,12 @@ describe('cluster resilience (real containers)', () => {
         );
         assert.ok(msgs.filter((m) => m === 'redis connection ready').length >= 3, service);
       }
+      const workerMsgs = [...(await logsOf('worker1')), ...(await logsOf('worker2'))].map(
+        (l) => l.msg,
+      );
+      assert.ok(
+        workerMsgs.includes('redis connection lost (events stay in the outbox until it returns)'),
+      );
     });
   });
 
@@ -299,14 +289,22 @@ describe('cluster resilience (real containers)', () => {
       open.push(probe);
       await probe.join(id);
       await probe.next('participant.count', (p) => p.data.count === 7, 20_000);
-      const final = await bidWithRetry(apiBase, buyer(0).token, id, '99.00', 'restart-key-final');
+      // Above whatever the stream reached (it ran until the restart was over, however long that took).
+      const finalAmount = `${String(11 + total + 10)}.00`;
+      const final = await bidWithRetry(
+        apiBase,
+        buyer(0).token,
+        id,
+        finalAmount,
+        'restart-key-final',
+      );
       assert.equal(final.status, 201);
       for (const c of clients) {
-        await c.next('bid.accepted', (p) => p.data.amount === '99.00', 10_000);
+        await c.next('bid.accepted', (p) => p.data.amount === finalAmount, 10_000);
       }
       for (const c of clients) {
         assert.equal(
-          c.pending('bid.accepted').filter((e) => e.payload.data.amount === '99.00').length,
+          c.pending('bid.accepted').filter((e) => e.payload.data.amount === finalAmount).length,
           0,
         );
       }

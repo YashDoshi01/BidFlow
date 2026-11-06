@@ -7,9 +7,7 @@ import {
   buildSnapshotEvent,
   joinPayloadSchema,
   leavePayloadSchema,
-  type AuctionEvent,
 } from '../../events/events.ts';
-import type { EventPublisher } from '../../events/publisher.ts';
 import { AppError } from '../../http/errors.ts';
 import type { Logger } from '../../logging/logger.ts';
 import type { AuctionService } from '../auctions/index.ts';
@@ -33,8 +31,6 @@ export interface RealtimeDeps {
 
 export interface Realtime {
   io: Server;
-  /** Sends committed events to the room of their auction. */
-  publisher: EventPublisher;
   close: () => Promise<void>;
 }
 
@@ -259,15 +255,8 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
     logger.info('socket connected', { socketId: socket.id, anonymous: data.userId === undefined });
   });
 
-  const publisher: EventPublisher = {
-    publish(event: AuctionEvent): void {
-      io.to(auctionRoom(event.auctionId)).emit(event.eventType, event);
-    },
-  };
-
   return {
     io,
-    publisher,
     close: () => {
       countTimers.forEach((timer) => {
         clearTimeout(timer);

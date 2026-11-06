@@ -1,7 +1,6 @@
 import http from 'node:http';
 import type express from 'express';
 import { createApp, type AppDeps } from './app.ts';
-import { createEventRelay } from './events/publisher.ts';
 import { attachRealtime, type Realtime, type RedisPair } from './modules/realtime/index.ts';
 import { createServices } from './services.ts';
 
@@ -12,23 +11,20 @@ export interface RunningServer {
 }
 
 /**
- * Builds the HTTP app and the Socket.IO gateway on one server, sharing one set of
- * services. The order matters: the app needs a publisher, Socket.IO needs the HTTP
- * server that wraps the app, so the publisher is a relay that is connected last.
+ * Builds the HTTP app and the Socket.IO gateway on one server, sharing one set of services.
+ *
+ * Note what is NOT here: nothing in this process announces bids. A bid commits together with its
+ * outbox event (ADR-039); a separate worker publishes it (apps/workers). This process only holds
+ * the WebSocket connections and delivers what the adapter hands it.
  */
 export function createRunningServer(
-  deps: Omit<AppDeps, 'services' | 'publisher'> & {
+  deps: Omit<AppDeps, 'services'> & {
     maxRoomsPerSocket?: number;
     /** Connects this instance's rooms and broadcasts to the other instances. */
     redis?: RedisPair;
   },
 ): RunningServer {
-  const relay = createEventRelay(deps.logger);
-  const services = createServices(deps.db, {
-    sessionTtlSeconds: deps.sessionTtlSeconds,
-    logger: deps.logger,
-    publisher: relay,
-  });
+  const services = createServices(deps.db, { sessionTtlSeconds: deps.sessionTtlSeconds });
   const app = createApp({ ...deps, services });
   const server = http.createServer(app);
   const realtime = attachRealtime(server, {
@@ -39,6 +35,5 @@ export function createRunningServer(
     ...(deps.maxRoomsPerSocket === undefined ? {} : { maxRoomsPerSocket: deps.maxRoomsPerSocket }),
     ...(deps.redis === undefined ? {} : { redis: deps.redis }),
   });
-  relay.attach(realtime.publisher);
   return { server, app, realtime };
 }

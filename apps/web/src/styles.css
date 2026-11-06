@@ -214,6 +214,7 @@ button.link {
 .facts dd {
   margin: 0;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .facts .big {
   font-size: 1.8rem;
@@ -284,5 +285,191 @@ button.link {
   }
   .bids time {
     display: none;
+  }
+}
+
+/* Phase 7: filters, seller dashboard, notifications, states */
+.topbar nav a[aria-current='page'] {
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 2px solid var(--accent);
+}
+.count {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 1.4em;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bad);
+  color: var(--surface);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+select,
+textarea {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  width: 100%;
+}
+.filters {
+  grid-template-columns: 2fr 1fr;
+  align-items: end;
+  margin-bottom: 8px;
+}
+label.inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+label.inline select {
+  width: auto;
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.grid3 {
+  display: grid;
+  grid-template-columns: 1.5fr 1.5fr 1fr;
+  gap: 12px;
+}
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.row-actions button:not(.primary):not(.link),
+.error-box button,
+.warn-box button,
+.card > button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+.auction-list .meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  flex-basis: 100%;
+  order: 3;
+}
+.seller-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.seller-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+}
+.seller-row .meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  flex-basis: 100%;
+}
+.seller-row .error {
+  flex-basis: 100%;
+}
+.error-box,
+.warn-box,
+.offline-banner {
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+.error-box {
+  color: var(--bad);
+}
+.warn-box,
+.offline-banner {
+  color: var(--warn);
+}
+.error-box p,
+.warn-box p {
+  margin: 0 0 8px;
+}
+.offline-banner {
+  margin: 0;
+  border-radius: 0;
+  border-width: 0 0 1px;
+  text-align: center;
+  background: var(--surface);
+}
+.ok {
+  color: var(--ok);
+}
+.my-status {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid currentColor;
+  font-weight: 600;
+  background: var(--surface);
+}
+.my-status.ok {
+  color: var(--ok);
+}
+.my-status.bad {
+  color: var(--bad);
+}
+.card.result {
+  border-color: var(--ok);
+}
+.description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bids li.mine {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.notifications {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.notifications li {
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.notifications li.unread {
+  border-left: 4px solid var(--accent);
+}
+.notifications p {
+  margin: 4px 0;
+}
+.notifications time {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-right: 8px;
+}
+.notifications .dot {
+  margin-left: 8px;
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-weight: 700;
+}
+main:focus {
+  outline: none;
+}
+@media (max-width: 480px) {
+  .filters,
+  .grid2,
+  .grid3 {
+    grid-template-columns: 1fr;
   }
 }

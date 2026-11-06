@@ -6,9 +6,6 @@ import {
   bidAcceptedEventSchema,
   participantCountEventSchema,
 } from '../../apps/api/src/events/events.ts';
-import { createAuctionService } from '../../apps/api/src/modules/auctions/index.ts';
-import { createBidService } from '../../apps/api/src/modules/bids/index.ts';
-import { createLogger } from '../../apps/api/src/logging/logger.ts';
 import {
   auctionBody,
   liveAuction,
@@ -259,21 +256,28 @@ describe('realtime auction rooms (real sockets, real PostgreSQL)', () => {
       assert.deepEqual(sequences, [1, 2, 3, 4, 5]);
     });
 
-    it('concurrent bids: every accepted bid is announced exactly once (arrival order is NOT guaranteed yet)', async () => {
+    // Phase 3-4: the order of arrival was NOT guaranteed (each request published on its own). With the
+    // outbox only the lowest unpublished event of an auction can be claimed, so it IS guaranteed.
+    it('concurrent bids: every accepted bid is announced exactly once, IN SEQUENCE ORDER', async () => {
       const id = await liveAuction(api, seller.token);
       const s = await connect();
       await s.join(id);
       const results = await Promise.all(
-        Array.from({ length: 12 }, (_, i) =>
+        Array.from({ length: 16 }, (_, i) =>
           placeBid(api, buyer(i % 5).token, id, `${String(11 + i)}.00`),
         ),
       );
       const accepted = results.filter((r) => r.status === 201).length;
-      const seen = new Set<number>();
+      assert.ok(accepted >= 2);
+      const arrived: number[] = [];
       for (let i = 0; i < accepted; i += 1) {
-        seen.add(bidAcceptedEventSchema.parse(await s.next('bid.accepted')).sequence);
+        arrived.push(bidAcceptedEventSchema.parse(await s.next('bid.accepted')).sequence);
       }
-      assert.equal(seen.size, accepted);
+      assert.deepEqual(
+        arrived,
+        Array.from({ length: accepted }, (_, i) => i + 1),
+        'events must arrive as 1, 2, 3 ... with no gap, duplicate or reordering',
+      );
       assert.equal((await s.quiet(300, 'bid.accepted')).length, 0);
     });
 
@@ -326,58 +330,6 @@ describe('realtime auction rooms (real sockets, real PostgreSQL)', () => {
         await holder.query('ROLLBACK').catch(() => undefined);
         holder.release();
       }
-    });
-
-    // Deterministic "after commit" proof. The spy is called at the exact moment the service
-    // publishes, and asks a DIFFERENT connection whether the bid is visible. An uncommitted
-    // row is invisible to other connections, so publishing before COMMIT fails this test
-    // every time (a client-side check would be a race).
-    it('the publisher is called only once the bid is committed and visible to other connections', async () => {
-      const id = await liveAuction(api, seller.token);
-      const visibleAtPublish: boolean[] = [];
-      const service = createBidService(app.db, createAuctionService(app.db), {
-        publisher: {
-          publish: async (event) => {
-            if (event.eventType !== 'bid.accepted') return;
-            const { rows } = await app.db.query(
-              'SELECT 1 FROM bids b JOIN auctions a ON a.id = b.auction_id WHERE b.id = $1 AND a.highest_bid_id = b.id',
-              [event.data.bidId],
-            );
-            visibleAtPublish.push(rows.length === 1);
-          },
-        },
-      });
-      const result = await service.place({
-        auctionId: id,
-        userId: buyer().id,
-        idempotencyKey: newKey(),
-        input: { amount: '10.00' },
-      });
-      assert.equal(result.status, 201);
-      assert.deepEqual(visibleAtPublish, [true]);
-    });
-
-    it('a failing publisher does not fail the bid: it is committed, and the failure is logged', async () => {
-      const id = await liveAuction(api, seller.token);
-      const lines: Record<string, unknown>[] = [];
-      const service = createBidService(app.db, createAuctionService(app.db), {
-        publisher: {
-          publish: () => {
-            throw new Error('redis is down');
-          },
-        },
-        logger: createLogger('debug', (l) => lines.push(JSON.parse(l) as Record<string, unknown>)),
-      });
-      const result = await service.place({
-        auctionId: id,
-        userId: buyer().id,
-        idempotencyKey: newKey(),
-        input: { amount: '10.00' },
-      });
-      assert.equal(result.status, 201);
-      const { rows } = await app.db.query('SELECT 1 FROM bids WHERE auction_id = $1', [id]);
-      assert.equal(rows.length, 1);
-      assert.ok(lines.some((l) => l['msg'] === 'failed to publish bid.accepted'));
     });
   });
 

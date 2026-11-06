@@ -4,7 +4,8 @@
 // The server is the only authority. The browser applies:
 //   * a snapshot (the full authoritative state at the time of joining), and
 //   * `bid.accepted` events (or the server's own 201 reply to our bid), each carrying
-//     a `sequence` (the auction's bid_sequence).
+//     a `sequence` (the auction's auction_event_sequence: the position of the event among ALL
+//     durable events of the auction; the bid's own position is `bidSequence`, a different counter).
 // An event is applied only if it is exactly the next one. Older = duplicate/stale,
 // ignored. Further ahead = a gap: do not guess, ask the server for a fresh snapshot.
 // Nothing is ever shown as accepted because the user clicked a button.
@@ -33,8 +34,15 @@ export interface AuctionView {
   endsAt: string;
   createdAt: string;
   updatedAt: string;
+  /** Number of accepted bids. */
   bidSequence: string;
+  /** Number of durable events: the `sequence` of the last event applied. */
+  eventSequence: string;
   highestBidId: string | null;
+  /** Anti-sniping extensions used so far. */
+  extensionCount: number;
+  endedAt: string | null;
+  winningBidId: string | null;
   minimumNextBid: string | null;
 }
 
@@ -47,6 +55,23 @@ export interface AcceptedBid {
   minimumNextBid: string | null;
 }
 
+/**
+ * The lifecycle events (Phase 6). They share the sequence with bids, so they are applied by the same
+ * rule: only the next one, duplicates ignored, a gap means "ask for a snapshot".
+ */
+export type LifecycleEvent =
+  | { kind: 'started'; sequence: number; endsAt: string }
+  | { kind: 'extended'; sequence: number; endsAt: string; extensionCount: number }
+  | {
+      kind: 'ended';
+      sequence: number;
+      endedAt: string;
+      winningBidId: string | null;
+      finalPrice: string;
+    };
+
+type SequencedEvent = AcceptedBid | LifecycleEvent;
+
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
 export interface RoomState {
@@ -58,7 +83,7 @@ export interface RoomState {
   lastSequence: number;
   participants: number | null;
   /** Events that arrived before the first snapshot; replayed once it is applied. */
-  buffered: AcceptedBid[];
+  buffered: SequencedEvent[];
   /** The highest sequence seen in a gap (an event ahead of the next expected one). */
   gapTarget: number;
   /** Incremented every time a gap is detected; the hook re-joins when it changes. */
@@ -69,6 +94,7 @@ export type RoomAction =
   | { type: 'connection'; status: ConnectionStatus }
   | { type: 'snapshot'; sequence: number; auction: AuctionView; recentBids: BidView[] }
   | { type: 'bid'; accepted: AcceptedBid }
+  | { type: 'lifecycle'; event: LifecycleEvent }
   | { type: 'participants'; count: number };
 
 export const MAX_BIDS_KEPT = 50;
@@ -88,6 +114,49 @@ export function needsResync(state: RoomState): boolean {
   return state.lastSequence < state.gapTarget;
 }
 
+function applyLifecycle(state: RoomState, event: LifecycleEvent): RoomState {
+  if (state.auction === null) return state;
+  const sequence = String(event.sequence);
+  switch (event.kind) {
+    case 'started':
+      return {
+        ...state,
+        auction: {
+          ...state.auction,
+          status: 'LIVE',
+          endsAt: event.endsAt,
+          eventSequence: sequence,
+        },
+        lastSequence: event.sequence,
+      };
+    case 'extended':
+      return {
+        ...state,
+        auction: {
+          ...state.auction,
+          endsAt: event.endsAt,
+          extensionCount: event.extensionCount,
+          eventSequence: sequence,
+        },
+        lastSequence: event.sequence,
+      };
+    case 'ended':
+      return {
+        ...state,
+        auction: {
+          ...state.auction,
+          status: 'ENDED',
+          endedAt: event.endedAt,
+          winningBidId: event.winningBidId,
+          currentPrice: event.finalPrice,
+          minimumNextBid: null,
+          eventSequence: sequence,
+        },
+        lastSequence: event.sequence,
+      };
+  }
+}
+
 function applyNext(state: RoomState, accepted: AcceptedBid): RoomState {
   if (state.auction === null) return state;
   return {
@@ -97,7 +166,8 @@ function applyNext(state: RoomState, accepted: AcceptedBid): RoomState {
       currentPrice: accepted.currentPrice,
       endsAt: accepted.endsAt,
       minimumNextBid: accepted.minimumNextBid,
-      bidSequence: String(accepted.sequence),
+      bidSequence: accepted.bid.bidSequence,
+      eventSequence: String(accepted.sequence),
       highestBidId: accepted.bid.id,
     },
     bids: [accepted.bid, ...state.bids].slice(0, MAX_BIDS_KEPT),
@@ -105,18 +175,20 @@ function applyNext(state: RoomState, accepted: AcceptedBid): RoomState {
   };
 }
 
-function acceptBid(state: RoomState, accepted: AcceptedBid): RoomState {
+function acceptEvent(state: RoomState, event: SequencedEvent): RoomState {
   if (state.auction === null) {
     // Joined, snapshot not here yet: remember it rather than lose it.
-    return { ...state, buffered: [...state.buffered, accepted] };
+    return { ...state, buffered: [...state.buffered, event] };
   }
   const expected = state.lastSequence + 1;
-  if (accepted.sequence < expected) return state; // duplicate or stale
-  if (accepted.sequence === expected) return applyNext(state, accepted);
+  if (event.sequence < expected) return state; // duplicate or stale
+  if (event.sequence === expected) {
+    return 'kind' in event ? applyLifecycle(state, event) : applyNext(state, event);
+  }
   // A gap (or out-of-order delivery): never guess, ask for the authoritative state.
   return {
     ...state,
-    gapTarget: Math.max(state.gapTarget, accepted.sequence),
+    gapTarget: Math.max(state.gapTarget, event.sequence),
     resyncRequests: state.resyncRequests + 1,
   };
 }
@@ -130,7 +202,10 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       return { ...state, participants: action.count };
 
     case 'bid':
-      return acceptBid(state, action.accepted);
+      return acceptEvent(state, action.accepted);
+
+    case 'lifecycle':
+      return acceptEvent(state, action.event);
 
     case 'snapshot': {
       // A snapshot older than what we already applied must not move us backwards
@@ -144,7 +219,7 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
         buffered: [],
       };
       const early = [...state.buffered].sort((a, b) => a.sequence - b.sequence);
-      for (const accepted of early) next = acceptBid(next, accepted);
+      for (const event of early) next = acceptEvent(next, event);
       return next;
     }
   }

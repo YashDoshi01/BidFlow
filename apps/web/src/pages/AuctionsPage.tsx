@@ -1,48 +1,97 @@
-import { useEffect, useState, type SyntheticEvent } from 'react';
-import { ApiError, api } from '../api.ts';
-import type { AuctionView } from '../room/roomState.ts';
+import { useState } from 'react';
+import { useAuctionList, useDebounced, type ListFilters } from '../hooks/useAuctionList.ts';
 import type { Session } from '../session.ts';
 
-interface ListResponse {
-  items: AuctionView[];
-  nextCursor: string | null;
-}
+const STATUS_OPTIONS: { value: ListFilters['status']; label: string }[] = [
+  { value: '', label: 'All' },
+  { value: 'LIVE', label: 'Live now' },
+  { value: 'SCHEDULED', label: 'Upcoming' },
+  { value: 'ENDED', label: 'Ended' },
+];
 
 export function AuctionsPage({ session }: { session: Session | null }) {
-  const [items, setItems] = useState<AuctionView[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api<ListResponse>('GET', '/auctions?limit=20')
-      .then((r) => {
-        if (!cancelled) setItems(r.items);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof ApiError ? e.message : 'Could not load auctions');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState<ListFilters['status']>('');
+  const q = useDebounced(text, 300);
+  const list = useAuctionList({ q, status, mine: false });
+  const filtered = q.trim() !== '' || status !== '';
 
   return (
     <>
       <section className="card">
         <h1>Auctions</h1>
-        {error && (
-          <p role="alert" className="error">
-            {error}
+        <form
+          className="filters"
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+          }}
+        >
+          <label>
+            Search titles
+            <input
+              type="search"
+              maxLength={100}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+              }}
+              data-testid="search"
+            />
+          </label>
+          <label>
+            Show
+            <select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value as ListFilters['status']);
+              }}
+              data-testid="status-filter"
+            >
+              {STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </form>
+
+        {list.error && (
+          <div role="alert" className="error-box" data-testid="list-error">
+            <p>{list.error}</p>
+            <button type="button" onClick={list.reload}>
+              Try again
+            </button>
+          </div>
+        )}
+        {list.loading && list.items === null && (
+          <p aria-live="polite" data-testid="list-loading">
+            Loading auctions…
           </p>
         )}
-        {items === null && !error && <p>Loading…</p>}
-        {items?.length === 0 && <p>No auctions yet.</p>}
-        <ul className="auction-list">
-          {items?.map((a) => (
+        {list.items?.length === 0 && !list.error && (
+          <p data-testid="list-empty">
+            {filtered
+              ? 'No auction matches. Try a different search or filter.'
+              : 'No auctions yet.'}
+          </p>
+        )}
+        {list.items && list.items.length > 0 && (
+          <p className="hint" aria-live="polite" data-testid="list-count">
+            {String(list.items.length)} shown{list.hasMore ? ', more available' : ''}
+          </p>
+        )}
+        <ul className="auction-list" aria-busy={list.loading}>
+          {list.items?.map((a) => (
             <li key={a.id}>
-              <a href={`#/auction/${a.id}`}>
+              <a href={`#/auction/${a.id}`} data-testid="auction-link">
                 <strong>{a.title}</strong>
                 <span className={`badge ${a.status.toLowerCase()}`}>{a.status}</span>
+                <span className="meta">
+                  {a.bidSequence} {a.bidSequence === '1' ? 'bid' : 'bids'} · ends{' '}
+                  {new Date(a.endsAt).toLocaleString()}
+                </span>
                 <span className="price">
                   {a.currentPrice} {a.currency}
                 </span>
@@ -50,93 +99,27 @@ export function AuctionsPage({ session }: { session: Session | null }) {
             </li>
           ))}
         </ul>
-      </section>
-      {session ? <QuickCreate session={session} /> : <p>Sign in to create an auction or bid.</p>}
-    </>
-  );
-}
-
-/** A deliberately small form: creates and publishes an auction that starts now. */
-function QuickCreate({ session }: { session: Session }) {
-  const [title, setTitle] = useState('');
-  const [price, setPrice] = useState('10.00');
-  const [minutes, setMinutes] = useState('30');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: SyntheticEvent): Promise<void> {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const startsAt = new Date(Date.now() - 1000).toISOString();
-      const endsAt = new Date(Date.now() + Number(minutes) * 60_000).toISOString();
-      const created = await api<{ auction: AuctionView }>('POST', '/auctions', {
-        token: session.token,
-        body: { title, startingPrice: price, startsAt, endsAt },
-      });
-      await api('POST', `/auctions/${created.auction.id}/publish`, { token: session.token });
-      window.location.hash = `#/auction/${created.auction.id}`;
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not create the auction');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="card">
-      <h2>Start an auction now</h2>
-      <form
-        onSubmit={(e) => {
-          void submit(e);
-        }}
-      >
-        <label>
-          Title
-          <input
-            required
-            maxLength={120}
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-            }}
-          />
-        </label>
-        <label>
-          Starting price
-          <input
-            required
-            inputMode="decimal"
-            pattern="\d{1,10}(\.\d{1,2})?"
-            value={price}
-            onChange={(e) => {
-              setPrice(e.target.value);
-            }}
-          />
-        </label>
-        <label>
-          Duration in minutes
-          <input
-            required
-            type="number"
-            min={1}
-            max={43200}
-            value={minutes}
-            onChange={(e) => {
-              setMinutes(e.target.value);
-            }}
-          />
-        </label>
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
+        {list.hasMore && (
+          <button
+            type="button"
+            onClick={list.loadMore}
+            disabled={list.loadingMore}
+            data-testid="load-more"
+          >
+            {list.loadingMore ? 'Loading…' : 'Show more'}
+          </button>
         )}
-        <button type="submit" className="primary" disabled={busy}>
-          Create and start
-        </button>
-      </form>
-    </section>
+      </section>
+      {!session && (
+        <p>
+          <a href="#/login">Sign in</a> to sell or to bid.
+        </p>
+      )}
+      {session && (
+        <p>
+          <a href="#/sell">Sell something</a>
+        </p>
+      )}
+    </>
   );
 }

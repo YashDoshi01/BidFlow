@@ -368,6 +368,54 @@ describe('auctions (real PostgreSQL)', () => {
       assert.deepEqual(seen, [...ids].reverse());
     });
 
+    it('searches titles case-insensitively, takes wildcards literally, never leaks drafts, and pages', async () => {
+      await resetData(app.db);
+      seller = await newUser(api, 'seller');
+      const publish = async (title: string): Promise<string> => {
+        const id = await createDraft({ title });
+        await api('POST', `/auctions/${id}/publish`, { token: seller.token });
+        return id;
+      };
+      const lamp = await publish('Brass Lamp');
+      const lamp2 = await publish('antique LAMP shade');
+      await publish('Vase');
+      const percent = await publish('100% cotton');
+      const underscore = await publish('a_b');
+      await publish('axb');
+      const draft = await createDraft({ title: 'Secret lamp' });
+
+      const titles = async (q: string, token?: string): Promise<string[]> => {
+        const res = await api('GET', `/auctions?q=${encodeURIComponent(q)}`, { token });
+        assert.equal(res.status, 200, JSON.stringify(res.body));
+        return res.body.items.map((a: { id: string }) => a.id);
+      };
+      // case-insensitive, substring, newest first
+      assert.deepEqual(await titles('lamp'), [lamp2, lamp]);
+      // a typed wildcard is a literal character, not "match everything"
+      assert.deepEqual(await titles('%'), [percent]);
+      assert.deepEqual(await titles('_'), [underscore]);
+      assert.deepEqual(await titles('\\'), []);
+      assert.deepEqual(await titles("' OR 1=1 --"), []);
+      assert.deepEqual(await titles('nothing like this'), []);
+      // a draft is invisible to the public search, visible to its seller with mine=true
+      assert.ok(!(await titles('secret')).includes(draft));
+      const mine = await api('GET', `/auctions?mine=true&q=secret`, { token: seller.token });
+      assert.deepEqual(
+        mine.body.items.map((a: { id: string }) => a.id),
+        [draft],
+      );
+      // the search composes with paging
+      const page1 = await api('GET', '/auctions?q=lamp&limit=1');
+      assert.equal(page1.body.items[0].id, lamp2);
+      const cursor1 = page1.body.nextCursor as string;
+      const page2 = await api('GET', `/auctions?q=lamp&limit=1&cursor=${cursor1}`);
+      assert.equal(page2.body.items[0].id, lamp);
+      assert.equal(page2.body.nextCursor, null);
+      // bounds
+      assert.equal((await api('GET', '/auctions?q=')).status, 400);
+      assert.equal((await api('GET', `/auctions?q=${'x'.repeat(101)}`)).status, 400);
+    });
+
     it('rejects an out-of-range limit, a bad cursor and unknown filters', async () => {
       assert.equal((await api('GET', '/auctions?limit=51')).status, 400);
       assert.equal((await api('GET', '/auctions?limit=0')).status, 400);

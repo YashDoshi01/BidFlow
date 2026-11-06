@@ -28,7 +28,15 @@ export interface AuctionView {
   updatedAt: string;
   /** Number of accepted bids (the auction's bid_sequence). */
   bidSequence: string;
+  /** Number of durable events (the auction's auction_event_sequence); the `sequence` of live events. */
+  eventSequence: string;
   highestBidId: string | null;
+  /** Anti-sniping extensions used so far (at most 10). */
+  extensionCount: number;
+  /** When the auction ended (the database clock); null while it has not. */
+  endedAt: string | null;
+  /** The winning bid: the highest accepted bid at the end; null until ended, or if nobody bid. */
+  winningBidId: string | null;
   /** The smallest amount a new bid must reach right now; null if it exceeds the maximum price. */
   minimumNextBid: string | null;
 }
@@ -60,7 +68,11 @@ function toView(r: repo.AuctionRow): AuctionView {
     createdAt: r.created_at.toISOString(),
     updatedAt: r.updated_at.toISOString(),
     bidSequence: r.bid_sequence,
+    eventSequence: r.auction_event_sequence,
     highestBidId: r.highest_bid_id,
+    extensionCount: r.extension_count,
+    endedAt: r.ended_at ? r.ended_at.toISOString() : null,
+    winningBidId: r.winning_bid_id,
     minimumNextBid: minimumNextBid(r),
   };
 }
@@ -200,6 +212,7 @@ export function createAuctionService(db: Db): AuctionService {
         sellerId: mine ? viewerId : query.sellerId,
         status: query.status,
         beforeSeq: query.cursor ? decodeCursor(query.cursor) : undefined,
+        titleContains: query.q,
         limit: query.limit + 1, // one extra row tells us whether another page exists
       });
       const page = rows.slice(0, query.limit);

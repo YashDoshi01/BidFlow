@@ -2,6 +2,7 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { Pool } from 'pg';
 import { TestSocket } from '../integration/realtime-helpers.ts';
 
 const run = promisify(execFile);
@@ -159,4 +160,56 @@ export async function bothInstancesInRotation(): Promise<void> {
   );
   // nginx.conf: fail_timeout=5s. Wait it out (plus a margin) so no instance is still marked failed.
   await sleep(6500);
+}
+
+/** POST a bid; retry the SAME Idempotency-Key on network errors and 5xx, as a real client would. */
+export async function bidWithRetry(
+  base: string,
+  token: string,
+  auctionId: string,
+  amount: string,
+  key: string,
+): Promise<{ status: number; attempts: number }> {
+  for (let attempt = 1; attempt <= 60; attempt += 1) {
+    try {
+      const res = await fetch(`${base}/auctions/${auctionId}/bids`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'Idempotency-Key': key,
+        },
+        body: JSON.stringify({ amount }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.status < 500) return { status: res.status, attempts: attempt };
+    } catch {
+      // connection refused / reset while a container restarts: try again
+    }
+    await sleep(150);
+  }
+  throw new Error(`bid ${amount} never got a definitive answer`);
+}
+
+/** The exit code of a (stopped) service's container: 0 after a graceful shutdown. */
+export async function exitCodeOf(service: string): Promise<number> {
+  const id = (await compose('ps', '-a', '-q', service)).trim();
+  const { stdout } = await run('docker', ['inspect', '-f', '{{.State.ExitCode}}', id]);
+  return Number(stdout.trim());
+}
+
+/** A pool for the CURRENT published PostgreSQL port (Docker may change it when the container restarts). */
+export async function freshPool(): Promise<Pool> {
+  const out = (await compose('port', 'postgres', '5432')).trim();
+  const port = /:(\d+)\s*$/m.exec(out)?.[1];
+  if (!port) throw new Error('no published PostgreSQL port');
+  const user = process.env['POSTGRES_USER'] ?? '';
+  const password = process.env['POSTGRES_PASSWORD'] ?? '';
+  const db = process.env['POSTGRES_DB'] ?? '';
+  const next = new Pool({
+    connectionString: `postgres://${user}:${password}@127.0.0.1:${port}/${db}`,
+    max: 5,
+  });
+  next.on('error', () => undefined);
+  return next;
 }

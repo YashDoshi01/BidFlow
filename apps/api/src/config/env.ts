@@ -16,6 +16,23 @@ const envSchema = z.object({
     .regex(/^[A-Za-z0-9_.-]{1,64}$/)
     .optional(),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(168),
+  // --- Outbox worker (apps/workers). The API does not use these. ---
+  // Sleep between polls when there is nothing to publish (a busy worker does not sleep).
+  OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(10).max(10_000).default(100),
+  OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
+  // A claimed event not finished within this time is taken over by another worker.
+  OUTBOX_LEASE_SECONDS: z.coerce.number().int().min(1).max(3600).default(30),
+  // After this many failed attempts an event becomes `failed` and needs a manual retry.
+  OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(10),
+  // Published events older than this are deleted (the outbox is a queue, not the history).
+  OUTBOX_RETENTION_HOURS: z.coerce.number().int().min(1).max(8760).default(168),
+  // --- Lifecycle worker (apps/workers). The API does not use these. ---
+  // Sleep between passes when nothing is due. The worst-case delay between ends_at and the ending.
+  LIFECYCLE_POLL_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
+  // Auctions handled per kind (start, end, ending soon) in one pass.
+  LIFECYCLE_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
+  // "Ending soon" notifications are written when an auction is this close to its end.
+  ENDING_SOON_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
   DATABASE_URL: z
     .url()
     .refine(

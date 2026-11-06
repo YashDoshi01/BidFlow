@@ -16,6 +16,11 @@ const env: Record<string, string> = {
   POSTGRES_PASSWORD: password,
   POSTGRES_DB: 'bidflow_test',
   NGINX_PORT: '',
+  // Short lease so a killed worker's events are taken over within seconds in the tests
+  // (production default: 30).
+  OUTBOX_LEASE_SECONDS: '3',
+  // Tight lifecycle polling so tests that wait for an auction to end do not wait a full second.
+  LIFECYCLE_POLL_INTERVAL_MS: '200',
 };
 
 function runToCompletion(

@@ -14,12 +14,17 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY apps/api apps/api
-COPY scripts/migrate.ts scripts/migrate.ts
+COPY apps/workers apps/workers
+COPY scripts/migrate.ts scripts/outbox.ts scripts/
 COPY db db
 
 # Do not run as root.
 USER node
 EXPOSE 3000
 
-# Default entrypoint: the API + WebSocket server. Other commands: `node scripts/migrate.ts`.
+# Default entrypoint: the API + WebSocket server. Other commands of the SAME image:
+#   node apps/workers/src/outboxWorker.ts   the outbox publisher worker
+#   node apps/workers/src/lifecycleWorker.ts  the auction lifecycle worker (start, anti-sniping end, notifications)
+#   node scripts/migrate.ts                 apply migrations
+#   node scripts/outbox.ts stats            operator tool for the outbox
 CMD ["node", "apps/api/src/server.ts"]

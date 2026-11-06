@@ -27,7 +27,11 @@ const auction = (sequence: number, price = '10.00'): AuctionView => ({
   createdAt: '2030-01-01T00:00:00.000Z',
   updatedAt: '2030-01-01T00:00:00.000Z',
   bidSequence: String(sequence),
+  eventSequence: String(sequence),
   highestBidId: sequence === 0 ? null : `b${String(sequence)}`,
+  extensionCount: 0,
+  endedAt: null,
+  winningBidId: null,
   minimumNextBid: '11.00',
 });
 
@@ -71,6 +75,25 @@ describe('roomReducer', () => {
       s.bids.map((b) => b.id),
       ['b1'],
     );
+  });
+
+  it('orders by the EVENT sequence and keeps the bid sequence separate (they are different counters)', () => {
+    // Future-proof: an event that is not a bid (say sequence 2) was applied earlier, so the next
+    // bid is event 3 but only the 2nd bid.
+    const base = run([snapshot(2, [bid(1)])]);
+    const secondBidAsThirdEvent: AcceptedBid = {
+      sequence: 3,
+      bid: { ...bid(2), bidSequence: '2' },
+      currentPrice: '11.00',
+      endsAt: '2030-01-01T01:00:00.000Z',
+      minimumNextBid: '12.00',
+    };
+    const s = roomReducer(base, { type: 'bid', accepted: secondBidAsThirdEvent });
+    assert.equal(s.lastSequence, 3);
+    assert.ok(s.auction);
+    assert.equal(s.auction.eventSequence, '3');
+    assert.equal(s.auction.bidSequence, '2');
+    assert.equal(needsResync(s), false);
   });
 
   it('ignores a duplicate event (same sequence delivered twice)', () => {
@@ -182,5 +205,87 @@ describe('roomReducer', () => {
     s = roomReducer(s, { type: 'participants', count: 4 });
     assert.equal(s.connection, 'connected');
     assert.equal(s.participants, 4);
+  });
+});
+
+describe('lifecycle events (Phase 6)', () => {
+  const auctionOf = (state: RoomState): AuctionView => {
+    assert.ok(state.auction);
+    return state.auction;
+  };
+  const extended = (
+    sequence: number,
+    endsAt = '2030-01-01T01:02:00.000Z',
+    count = 1,
+  ): RoomAction => ({
+    type: 'lifecycle',
+    event: { kind: 'extended', sequence, endsAt, extensionCount: count },
+  });
+  const ended = (sequence: number, winningBidId: string | null = 'b1'): RoomAction => ({
+    type: 'lifecycle',
+    event: {
+      kind: 'ended',
+      sequence,
+      endedAt: '2030-01-01T01:02:00.000Z',
+      winningBidId,
+      finalPrice: '10.00',
+    },
+  });
+
+  it('a bid and the extension it caused apply in order and move the end time', () => {
+    const s = run([snapshot(0), { type: 'bid', accepted: accepted(1) }, extended(2)]);
+    assert.equal(s.lastSequence, 2);
+    assert.equal(auctionOf(s).endsAt, '2030-01-01T01:02:00.000Z');
+    assert.equal(auctionOf(s).extensionCount, 1);
+    assert.equal(auctionOf(s).eventSequence, '2');
+    assert.equal(auctionOf(s).bidSequence, '1'); // the extension is an event, not a bid
+  });
+
+  it('the end closes the auction: status, winner, final price, no next bid', () => {
+    const s = run([snapshot(0), { type: 'bid', accepted: accepted(1) }, ended(2)]);
+    assert.equal(auctionOf(s).status, 'ENDED');
+    assert.equal(auctionOf(s).winningBidId, 'b1');
+    assert.equal(auctionOf(s).currentPrice, '10.00');
+    assert.equal(auctionOf(s).minimumNextBid, null);
+    assert.equal(auctionOf(s).endedAt, '2030-01-01T01:02:00.000Z');
+  });
+
+  it('a started event makes a scheduled auction LIVE', () => {
+    const scheduled: RoomAction = {
+      type: 'snapshot',
+      sequence: 0,
+      auction: { ...auction(0), status: 'SCHEDULED' },
+      recentBids: [],
+    };
+    const s = run([
+      scheduled,
+      {
+        type: 'lifecycle',
+        event: { kind: 'started', sequence: 1, endsAt: '2030-01-01T01:00:00.000Z' },
+      },
+    ]);
+    assert.equal(auctionOf(s).status, 'LIVE');
+    assert.equal(s.lastSequence, 1);
+  });
+
+  it('duplicates are ignored and a gap asks for a snapshot, like bids', () => {
+    const base = run([snapshot(0), { type: 'bid', accepted: accepted(1) }, extended(2)]);
+    assert.equal(roomReducer(base, extended(2)), base); // duplicate
+    const gap = roomReducer(base, ended(4)); // 3 is missing
+    assert.equal(gap.lastSequence, 2);
+    assert.equal(auctionOf(gap).status, 'LIVE');
+    assert.ok(needsResync(gap));
+  });
+
+  it('out-of-order delivery around a snapshot ends in the right state', () => {
+    // The extension (2) arrives BEFORE the snapshot; the snapshot is at 1.
+    const s = run([
+      extended(2),
+      { type: 'bid', accepted: accepted(1) },
+      { type: 'snapshot', sequence: 0, auction: auction(0), recentBids: [] },
+    ]);
+    assert.equal(s.lastSequence, 2);
+    assert.equal(auctionOf(s).extensionCount, 1);
+    assert.equal(s.bids.length, 1);
   });
 });

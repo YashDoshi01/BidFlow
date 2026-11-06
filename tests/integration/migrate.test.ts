@@ -55,14 +55,19 @@ describe('migration runner (scratch database per test)', () => {
       '0001_users_and_sessions.sql',
       '0002_auctions.sql',
       '0003_bids_and_idempotency.sql',
+      '0004_outbox.sql',
+      '0005_lifecycle.sql',
     ]);
     const second = await migrate(url, real);
     assert.deepEqual(second.applied, []);
-    assert.equal(second.alreadyApplied.length, 3);
+    assert.equal(second.alreadyApplied.length, 5);
     assert.deepEqual(await tables(url), [
       'auctions',
       'bids',
       'idempotency_records',
+      'notifications',
+      'outbox_events',
+      'outbox_retry_audit',
       'schema_migrations',
       'sessions',
       'users',

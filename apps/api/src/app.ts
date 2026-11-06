@@ -4,10 +4,10 @@ import { errorHandler, notFoundHandler } from './http/errors.ts';
 import { requestContext } from './http/requestContext.ts';
 import { runChecks, type DependencyCheck } from './health/dependencies.ts';
 import type { Logger } from './logging/logger.ts';
-import { noopPublisher, type EventPublisher } from './events/publisher.ts';
 import { auctionRoutes } from './modules/auctions/index.ts';
 import { authRoutes } from './modules/auth/index.ts';
 import { bidRoutes } from './modules/bids/index.ts';
+import { notificationRoutes } from './modules/notifications/index.ts';
 import { createServices, type Services } from './services.ts';
 
 export interface AppDeps {
@@ -17,8 +17,6 @@ export interface AppDeps {
   sessionTtlSeconds: number;
   /** Shared with the WebSocket gateway. Built here if not given (HTTP-only tests). */
   services?: Services;
-  /** Used only when `services` is not given. */
-  publisher?: EventPublisher;
   /** Returned in the X-Instance-Id header so a request can be traced to the instance that served it. */
   instanceId?: string;
 }
@@ -29,7 +27,6 @@ export function createApp({
   logger,
   sessionTtlSeconds,
   services,
-  publisher,
   instanceId,
 }: AppDeps): express.Express {
   const app = express();
@@ -65,12 +62,12 @@ export function createApp({
     });
   });
 
-  const { auth, auctions, bids } =
-    services ??
-    createServices(db, { sessionTtlSeconds, logger, publisher: publisher ?? noopPublisher });
+  const { auth, auctions, bids, notifications } =
+    services ?? createServices(db, { sessionTtlSeconds });
   app.use(authRoutes(auth));
   app.use(auctionRoutes(auctions, auth));
   app.use(bidRoutes(bids, auth));
+  app.use(notificationRoutes(notifications, auth));
 
   app.use(notFoundHandler);
   app.use(errorHandler(logger));

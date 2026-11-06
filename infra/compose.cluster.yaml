@@ -109,6 +109,80 @@ services:
       cluster:
         ipv4_address: 172.31.90.12
 
+  # Outbox workers: the SAME image with a different command. They publish committed events to Redis
+  # (and so to every API instance's sockets). Two of them, to show that they coordinate through
+  # PostgreSQL alone; either can be stopped, killed or restarted without losing an event.
+  worker1:
+    image: ${API_IMAGE:?}
+    command: ['node', 'apps/workers/src/outboxWorker.ts']
+    environment:
+      <<: *api-environment
+      INSTANCE_ID: worker1
+      OUTBOX_LEASE_SECONDS: ${OUTBOX_LEASE_SECONDS:-30}
+      OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-100}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # A worker with no HTTP port has no health check. Docker restarts it if its process dies on its
+    # own (a crash, an out-of-memory kill); it does NOT restart a container you stopped or `docker kill`ed.
+    restart: unless-stopped
+    stop_grace_period: 10s
+    networks:
+      - cluster
+
+  worker2:
+    image: ${API_IMAGE:?}
+    command: ['node', 'apps/workers/src/outboxWorker.ts']
+    environment:
+      <<: *api-environment
+      INSTANCE_ID: worker2
+      OUTBOX_LEASE_SECONDS: ${OUTBOX_LEASE_SECONDS:-30}
+      OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-100}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 10s
+    networks:
+      - cluster
+
+  # Lifecycle workers (Phase 6): the SAME image, a third command. They start and end auctions at their
+  # scheduled times with no browser involved. Two of them, to show that duplicate schedulers cannot
+  # produce conflicting results (FOR UPDATE SKIP LOCKED plus conditional updates).
+  scheduler1:
+    image: ${API_IMAGE:?}
+    command: ['node', 'apps/workers/src/lifecycleWorker.ts']
+    environment:
+      <<: *api-environment
+      INSTANCE_ID: scheduler1
+      LIFECYCLE_POLL_INTERVAL_MS: ${LIFECYCLE_POLL_INTERVAL_MS:-1000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 10s
+    networks:
+      - cluster
+
+  scheduler2:
+    image: ${API_IMAGE:?}
+    command: ['node', 'apps/workers/src/lifecycleWorker.ts']
+    environment:
+      <<: *api-environment
+      INSTANCE_ID: scheduler2
+      LIFECYCLE_POLL_INTERVAL_MS: ${LIFECYCLE_POLL_INTERVAL_MS:-1000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 10s
+    networks:
+      - cluster
+
   nginx:
     image: nginx:1.28-alpine
     volumes:

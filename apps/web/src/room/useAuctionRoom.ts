@@ -1,6 +1,11 @@
-import { useEffect, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { parseBidAccepted, parseParticipantCount, parseSnapshot } from './parseEvents.ts';
+import {
+  parseBidAccepted,
+  parseLifecycleEvent,
+  parseParticipantCount,
+  parseSnapshot,
+} from './parseEvents.ts';
 import { initialRoomState, roomReducer, type RoomAction, type RoomState } from './roomState.ts';
 
 export interface RoomHandle {
@@ -11,6 +16,8 @@ export interface RoomHandle {
   authFailed: boolean;
   /** Set if the server refused to let us into this room (for example, an unknown auction). */
   joinError: string | null;
+  /** Manual reconcile: ask the server for the authoritative state now (or reconnect). */
+  refresh: () => void;
 }
 
 /**
@@ -32,6 +39,8 @@ export function useAuctionRoom(auctionId: string, token: string | undefined): Ro
   );
   const socketRef = useRef<Socket | null>(null);
   const resyncInFlight = useRef(false);
+  // Bumped by the manual refresh while disconnected: the effect below then builds a NEW socket.
+  const [socketGeneration, setSocketGeneration] = useState(0);
 
   useEffect(() => {
     const socket = io({
@@ -77,6 +86,12 @@ export function useAuctionRoom(auctionId: string, token: string | undefined): Ro
       const accepted = parseBidAccepted(payload);
       if (accepted) dispatch({ type: 'bid', accepted });
     });
+    for (const type of ['auction.started', 'auction.extended', 'auction.ended']) {
+      socket.on(type, (payload: unknown) => {
+        const event = parseLifecycleEvent(payload);
+        if (event) dispatch({ type: 'lifecycle', event });
+      });
+    }
     socket.on('participant.count', (payload: unknown) => {
       const count = parseParticipantCount(payload);
       if (count !== null) dispatch({ type: 'participants', count });
@@ -89,7 +104,7 @@ export function useAuctionRoom(auctionId: string, token: string | undefined): Ro
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [auctionId, token]);
+  }, [auctionId, token, socketGeneration]);
 
   // A gap in the sequence means we missed or mis-ordered an event: join again, which
   // makes the server send a fresh authoritative snapshot (joining is idempotent).
@@ -110,5 +125,32 @@ export function useAuctionRoom(auctionId: string, token: string | undefined): Ro
       );
   }, [state.resyncRequests, auctionId]);
 
-  return { state, dispatch, authFailed: flags.authFailed, joinError: flags.joinError };
+  // The user's own "reconcile" button. Connected: join again, which makes the server send a fresh
+  // authoritative snapshot (joining is idempotent). Not connected: try to connect now instead of
+  // waiting for the next automatic retry; the `connect` handler joins.
+  const refresh = useCallback((): void => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    if (!socket.connected) {
+      // Not `socket.connect()`: while Socket.IO waits out its reconnect delay (up to 5 s) that does
+      // nothing, and reusing a socket whose retries were interrupted stopped them for good (found by
+      // the e2e test). A fresh socket connects at once and has its own retry schedule. The room state
+      // (kept in the reducer, not in the socket) is untouched until the new snapshot arrives.
+      setSocketGeneration((n) => n + 1);
+      return;
+    }
+    void socket
+      .timeout(5000)
+      .emitWithAck('auction.join', { auctionId })
+      .then(
+        (ack: { ok: boolean; error?: { code: string } }) => {
+          setFlags({ joinError: ack.ok ? null : (ack.error?.code ?? 'JOIN_FAILED') });
+        },
+        () => {
+          setFlags({ joinError: 'JOIN_TIMEOUT' });
+        },
+      );
+  }, [auctionId]);
+
+  return { state, dispatch, authFailed: flags.authFailed, joinError: flags.joinError, refresh };
 }
