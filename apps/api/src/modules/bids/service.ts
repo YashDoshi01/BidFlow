@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { Logger } from '../../logging/logger.ts';
 import {
   SCHEMA_VERSION,
   buildAuctionExtendedPayload,
@@ -117,8 +118,18 @@ export interface BidService {
   ) => Promise<{ items: BidView[]; nextCursor: string | null }>;
 }
 
+/** What the bid service reports about itself. The app turns it into metrics; this module knows no metrics library. */
+export interface BidObserver {
+  /** Seconds spent acquiring the auction row lock (includes one query round trip). */
+  lockWaited: (seconds: number) => void;
+  /** One bid request finished: `outcome` is `accepted`, `replayed`, an error code, or `error`. */
+  finished: (outcome: string, seconds: number) => void;
+}
+
 export interface BidServiceOptions {
   hooks?: BidTestHooks;
+  observer?: BidObserver;
+  logger?: Logger;
 }
 
 type PlaceArgs = Parameters<BidService['place']>[0];
@@ -129,9 +140,10 @@ export function createBidService(
   options: BidServiceOptions = {},
 ): BidService {
   const hooks = options.hooks ?? {};
+  const { observer, logger } = options;
 
   /** The whole decision. When it returns, the transaction has committed or rolled back. */
-  async function place({
+  async function placeInner({
     auctionId,
     userId,
     idempotencyKey,
@@ -148,7 +160,9 @@ export function createBidService(
     try {
       return await withTransaction(db, async (client): Promise<PlaceBidResult> => {
         // 2. The serialisation point: one transaction at a time per auction.
+        const lockStarted = process.hrtime.bigint();
         const auction = await lockAuction(client, auctionId);
+        observer?.lockWaited(Number(process.hrtime.bigint() - lockStarted) / 1e9);
         if (!auction || (auction.status === 'DRAFT' && auction.seller_id !== userId)) {
           throw new AppError(404, 'NOT_FOUND', 'Auction not found');
         }
@@ -339,6 +353,40 @@ export function createBidService(
           idempotencyKey,
         );
         if (stored) return replay(stored, hash);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Wraps the decision with measurement and one log line. Logged: ids only (auction, bid, event
+   * sequence). NOT logged: the amount, the bidder, the idempotency key. Those are business and
+   * personal data that metrics and request ids make unnecessary, and a log is copied far more
+   * widely than a database.
+   */
+  async function place(args: PlaceArgs): Promise<PlaceBidResult> {
+    const started = process.hrtime.bigint();
+    const seconds = (): number => Number(process.hrtime.bigint() - started) / 1e9;
+    try {
+      const result = await placeInner(args);
+      if (result.replayed) {
+        observer?.finished('replayed', seconds());
+      } else {
+        observer?.finished('accepted', seconds());
+        // A fresh (not replayed) result is always the body this service just built.
+        const body = result.body as PlaceBidResponse;
+        logger?.info('bid accepted', {
+          auctionId: args.auctionId,
+          bidId: body.bid.id,
+          eventSequence: body.auction.eventSequence,
+        });
+      }
+      return result;
+    } catch (error) {
+      const outcome = error instanceof AppError ? error.code : 'error';
+      observer?.finished(outcome, seconds());
+      if (error instanceof AppError) {
+        logger?.debug('bid rejected', { auctionId: args.auctionId, code: error.code });
       }
       throw error;
     }

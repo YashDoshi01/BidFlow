@@ -18,6 +18,7 @@ export type ErrorCode =
   | 'BID_TOO_LOW'
   | 'BIDDER_IS_SELLER'
   | 'IDEMPOTENCY_KEY_REUSED'
+  | 'RATE_LIMITED'
   | 'INTERNAL_ERROR';
 
 export interface ErrorDetail {

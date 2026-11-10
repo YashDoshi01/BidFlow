@@ -33,6 +33,41 @@ const envSchema = z.object({
   LIFECYCLE_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
   // "Ending soon" notifications are written when an auction is this close to its end.
   ENDING_SOON_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
+  // --- Rate limiting (API). Defaults and reasons: apps/api/src/ratelimit/policies.ts. ---
+  RATE_LIMIT_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  RATE_LIMIT_BID_USER_MAX: z.coerce.number().int().min(1).max(100_000).default(20),
+  RATE_LIMIT_BID_AUCTION_MAX: z.coerce.number().int().min(1).max(1_000_000).default(300),
+  RATE_LIMIT_LOGIN_IP_MAX: z.coerce.number().int().min(1).max(100_000).default(30),
+  RATE_LIMIT_LOGIN_EMAIL_MAX: z.coerce.number().int().min(1).max(100_000).default(10),
+  RATE_LIMIT_REGISTER_IP_MAX: z.coerce.number().int().min(1).max(100_000).default(10),
+  RATE_LIMIT_READ_IP_MAX: z.coerce.number().int().min(1).max(1_000_000).default(600),
+  // How many reverse proxies sit in front of the API and append to X-Forwarded-For (0 = none:
+  // the socket address is the client). WRONG VALUES BREAK RATE LIMITING: too low behind NGINX makes
+  // every user share NGINX's address; too high lets a client choose its own address.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+  // Extra browser origins allowed to open a WebSocket, comma separated (for example a separate
+  // dev server). The origin the page was served from (same host) is always allowed.
+  ALLOWED_ORIGINS: z
+    .string()
+    .default('')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
+    )
+    .refine(
+      (list) => list.every((o) => /^https?:\/\/[^/\s]+$/.test(o)),
+      'each origin must look like http://host:port (no path)',
+    ),
+  // If set, GET /metrics needs `Authorization: Bearer <this>`. Unset: open (rely on the network).
+  METRICS_TOKEN: z.string().min(16).max(200).optional(),
+  // Shutdown: how long readiness reports "draining" before connections close, and the hard deadline.
+  SHUTDOWN_DRAIN_MS: z.coerce.number().int().min(0).max(60_000).default(0),
+  SHUTDOWN_GRACE_MS: z.coerce.number().int().min(100).max(120_000).default(10_000),
   DATABASE_URL: z
     .url()
     .refine(

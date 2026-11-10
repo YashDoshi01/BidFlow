@@ -1,7 +1,8 @@
 import type { Db } from './db/pool.ts';
+import type { Logger } from './logging/logger.ts';
 import { createAuctionService, type AuctionService } from './modules/auctions/index.ts';
 import { createAuthService, type AuthService } from './modules/auth/index.ts';
-import { createBidService, type BidService } from './modules/bids/index.ts';
+import { createBidService, type BidObserver, type BidService } from './modules/bids/index.ts';
 import {
   createNotificationService,
   type NotificationService,
@@ -18,10 +19,16 @@ export interface Services {
  * Builds the application services once, so the HTTP routes and the WebSocket
  * gateway share the same instances (and therefore the same rules).
  */
-export function createServices(db: Db, options: { sessionTtlSeconds: number }): Services {
+export function createServices(
+  db: Db,
+  options: { sessionTtlSeconds: number; bidObserver?: BidObserver; logger?: Logger },
+): Services {
   const auth = createAuthService(db, { sessionTtlSeconds: options.sessionTtlSeconds });
   const auctions = createAuctionService(db);
-  const bids = createBidService(db, auctions);
+  const bids = createBidService(db, auctions, {
+    ...(options.bidObserver ? { observer: options.bidObserver } : {}),
+    ...(options.logger ? { logger: options.logger } : {}),
+  });
   const notifications = createNotificationService(db);
   return { auth, auctions, bids, notifications };
 }

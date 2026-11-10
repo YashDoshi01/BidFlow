@@ -18,7 +18,8 @@ The full plan is in `BidFlow_Implementation_and_Learning_Plan.md`. Working rules
 | 5     | Done - transactional outbox, workers                 |
 | 6     | Done - lifecycle worker, anti-sniping, notifications |
 | 7     | Done - full React UI, discovery, seller dashboard    |
-| 8-9   | Not started                                          |
+| 8     | Done - rate limits, metrics, security policy, drain  |
+| 9     | Not started                                          |
 
 Phase 1 added PostgreSQL migrations, registration/login/logout with server-side sessions, and auctions you
 can create, edit (while draft), publish, list and fetch. Phase 2 adds `POST /auctions/:id/bids` with
@@ -28,7 +29,10 @@ times with a worker (no browser involved), extends an auction when a bid arrives
 records the winner, and writes in-app notifications: see `docs/EVENTS.md`. Phase 7 is the full React client: auction
 discovery (search, filter, paging), a seller dashboard (create, edit draft, schedule, publish), the live room with your own
 bid status, an authoritative countdown, stale/offline/reconnect states with a manual refresh, notifications, and an account
-page. API reference: `docs/API.md`. Data model:
+page. Phase 8 makes it safer to operate: Redis-backed rate limits shared by all instances (with a documented fallback when
+Redis is down), a Prometheus metrics page, request-correlated logs that carry no secrets, a WebSocket origin check, security
+headers and a CSP, and a graceful draining shutdown; the threat model is `docs/SECURITY.md` and the metrics/SLIs are
+`docs/OBSERVABILITY.md`. API reference: `docs/API.md`. Data model:
 `docs/DATA_MODEL.md`.
 
 ## Requirements
@@ -120,12 +124,15 @@ docs/                decisions, architecture, product rules, learning log, bugs,
   (`docs/OPERATIONS.md`). An auction ends up to `LIFECYCLE_POLL_INTERVAL_MS` (1 s) after `endsAt` (bids are refused from
   `endsAt` on; only the final event and the notifications wait for the worker). Notifications are rows read over REST and polled by the
   client every 20 s (nothing is pushed). Cancelling an auction (rule 11) is not implemented. There is no admin view and no
-  component-level (DOM) unit tests for the React pages: they are tested end to end in a real browser. No Content-Security-Policy, no TLS and no
-  rate limiting yet (Phase 8). The browser tests need Microsoft Edge.
+  component-level (DOM) unit tests for the React pages: they are tested end to end in a real browser. No TLS. The CSP was checked
+  only behind NGINX (the Vite dev server sends none). The browser tests need Microsoft Edge. The full list of security
+  limitations is `docs/SECURITY.md`.
 - The development stack (`npm run infra:up`) was started by the owner; `docker ps` showed both
   containers running, but the agent did not run `check:infra` against it (it does not touch the
   owner's stack). The throwaway test database from `infra/compose.test.yaml` started healthy twice.
-- No rate limiting yet (Phase 8): login and registration can be brute-forced.
+- Rate limits are on by default. In development every request reaches the API through the Vite proxy, so all
+  your browsers share one address for the per-address limits (login 30 per 10 minutes, other requests 600 per minute);
+  raise them in `.env` (`RATE_LIMIT_*`, see `.env.example`) if you hit `429` while testing.
 - Password hashing uses scrypt N=16384 (Node default); see ADR-012.
 - `docs/` is listed in `.gitignore` (owner's change), so the documentation is not committed unless that
   line is removed.

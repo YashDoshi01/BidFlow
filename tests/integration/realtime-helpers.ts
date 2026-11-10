@@ -40,7 +40,7 @@ export class TestSocket {
   static connect(
     base: string,
     token?: string,
-    options: { reconnection?: boolean } = {},
+    options: { reconnection?: boolean; origin?: string } = {},
   ): Promise<TestSocket> {
     return new Promise((resolve, reject) => {
       const socket = connectIo(base, {
@@ -50,6 +50,8 @@ export class TestSocket {
         reconnectionDelay: 50,
         reconnectionDelayMax: 100,
         ...(token === undefined ? {} : { auth: { token } }),
+        // A browser always sends Origin on a WebSocket handshake; a Node client does not, so tests set it.
+        ...(options.origin === undefined ? {} : { extraHeaders: { Origin: options.origin } }),
       });
       const wrapped = new TestSocket(socket);
       socket.once('connect', () => {

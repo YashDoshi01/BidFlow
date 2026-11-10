@@ -1,3 +1,5 @@
+import { currentLogContext } from './context.ts';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const ORDER: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
@@ -44,6 +46,8 @@ export function createLogger(
         level: lvl,
         msg: message,
         ...(redact(base) as LogFields),
+        // Fields of the request being served (its id), added without the call site passing them.
+        ...(redact(currentLogContext()) as LogFields),
         ...(redact(fields) as LogFields),
       }),
     );

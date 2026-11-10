@@ -14,12 +14,24 @@ function main(): void {
   const logger = createLogger(env.LOG_LEVEL, undefined, { instance: instanceId });
   const db = createPool(env.DATABASE_URL);
   const redis = createRedisPair(env.REDIS_URL, logger);
-  const { server, realtime } = createRunningServer({
+  const { server, shutdown } = createRunningServer({
     db,
     logger,
     redis,
     instanceId,
     sessionTtlSeconds: env.SESSION_TTL_HOURS * 3600,
+    rateLimits: {
+      enabled: env.RATE_LIMIT_ENABLED,
+      bidUserMax: env.RATE_LIMIT_BID_USER_MAX,
+      bidAuctionMax: env.RATE_LIMIT_BID_AUCTION_MAX,
+      loginIpMax: env.RATE_LIMIT_LOGIN_IP_MAX,
+      loginEmailMax: env.RATE_LIMIT_LOGIN_EMAIL_MAX,
+      registerIpMax: env.RATE_LIMIT_REGISTER_IP_MAX,
+      readIpMax: env.RATE_LIMIT_READ_IP_MAX,
+    },
+    trustProxyHops: env.TRUST_PROXY_HOPS,
+    allowedOrigins: env.ALLOWED_ORIGINS,
+    ...(env.METRICS_TOKEN === undefined ? {} : { metricsToken: env.METRICS_TOKEN }),
     checks: [postgresPoolCheck(db), redisStatusCheck(() => redis.isUp())],
   });
 
@@ -27,14 +39,21 @@ function main(): void {
     logger.info('api listening', { host: env.API_HOST, port: env.API_PORT });
   });
 
-  // Graceful shutdown: stop accepting connections, let in-flight requests
-  // finish, then close the pool.
+  // Graceful shutdown: report "draining", stop accepting connections, let in-flight requests
+  // finish, close the WebSockets, then Redis and the pool. A hard deadline guarantees the process
+  // exits even if something refuses to close.
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
       logger.info('shutting down', { signal });
-      // Closing Socket.IO also closes the HTTP server and every WebSocket.
-      void realtime
-        .close()
+      const hardStop = setTimeout(
+        () => {
+          logger.error('shutdown took too long: exiting');
+          process.exit(1);
+        },
+        env.SHUTDOWN_DRAIN_MS + env.SHUTDOWN_GRACE_MS + 5000,
+      );
+      hardStop.unref();
+      void shutdown({ drainMs: env.SHUTDOWN_DRAIN_MS, graceMs: env.SHUTDOWN_GRACE_MS })
         .then(() => redis.close())
         .then(() => db.end())
         .then(

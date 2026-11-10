@@ -57,3 +57,42 @@ describe('parseEnv', () => {
     }
   });
 });
+
+describe('Phase 8 settings', () => {
+  it('have safe defaults: limits on, no proxy trusted, no extra origins, no metrics token', () => {
+    const env = parseEnv(valid);
+    assert.equal(env.RATE_LIMIT_ENABLED, true);
+    assert.equal(env.TRUST_PROXY_HOPS, 0);
+    assert.deepEqual(env.ALLOWED_ORIGINS, []);
+    assert.equal(env.METRICS_TOKEN, undefined);
+    assert.equal(env.RATE_LIMIT_BID_USER_MAX, 20);
+  });
+  it('parses the boolean and the origin list', () => {
+    const env = parseEnv({
+      ...valid,
+      RATE_LIMIT_ENABLED: 'false',
+      ALLOWED_ORIGINS: 'http://localhost:5173, https://app.example',
+    });
+    assert.equal(env.RATE_LIMIT_ENABLED, false);
+    assert.deepEqual(env.ALLOWED_ORIGINS, ['http://localhost:5173', 'https://app.example']);
+  });
+  it('rejects an origin with a path, a bad boolean, a short metrics token, absurd hop counts', () => {
+    assert.throws(
+      () => parseEnv({ ...valid, ALLOWED_ORIGINS: 'http://a.example/x' }),
+      EnvValidationError,
+    );
+    assert.throws(() => parseEnv({ ...valid, ALLOWED_ORIGINS: '*' }), EnvValidationError);
+    assert.throws(() => parseEnv({ ...valid, RATE_LIMIT_ENABLED: 'yes' }), EnvValidationError);
+    assert.throws(() => parseEnv({ ...valid, METRICS_TOKEN: 'short' }), EnvValidationError);
+    assert.throws(() => parseEnv({ ...valid, TRUST_PROXY_HOPS: '99' }), EnvValidationError);
+  });
+  it('the metrics token never appears in an error message', () => {
+    try {
+      parseEnv({ ...valid, METRICS_TOKEN: 'tooshort', API_PORT: 'x' });
+      assert.fail('expected a throw');
+    } catch (error) {
+      assert.ok(error instanceof EnvValidationError);
+      assert.ok(!error.message.includes('tooshort'));
+    }
+  });
+});

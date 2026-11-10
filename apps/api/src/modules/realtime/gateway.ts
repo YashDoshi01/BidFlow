@@ -9,6 +9,8 @@ import {
   leavePayloadSchema,
 } from '../../events/events.ts';
 import { AppError } from '../../http/errors.ts';
+import { isOriginAllowed } from '../../http/security.ts';
+import type { AppMetrics } from '../../metrics/appMetrics.ts';
 import type { Logger } from '../../logging/logger.ts';
 import type { AuctionService } from '../auctions/index.ts';
 import type { AuthService } from '../auth/index.ts';
@@ -22,6 +24,12 @@ export interface RealtimeDeps {
   logger: Logger;
   /** Upper bound on auction rooms per socket (memory bound; default 20). */
   maxRoomsPerSocket?: number;
+  /** Counts connections, rooms and joins. Optional so tests can build a gateway without metrics. */
+  metrics?: AppMetrics;
+  /** Browser origins (besides the page's own host) allowed to open a WebSocket. */
+  allowedOrigins?: string[];
+  /** Joins one connection may make per 10 s (default 30): each join costs database reads. */
+  maxJoinsPerWindow?: number;
   /**
    * With Redis, rooms and broadcasts span every API instance (ADR-031). Without it (single
    * process: most tests) everything stays in this process.
@@ -73,6 +81,10 @@ function toAck(candidate: unknown): Ack {
 export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Realtime {
   const { auth, auctions, bids, logger } = deps;
   const maxRooms = deps.maxRoomsPerSocket ?? 20;
+  const { metrics } = deps;
+  const allowedOrigins = deps.allowedOrigins ?? [];
+  const maxJoins = deps.maxJoinsPerWindow ?? 30;
+  const JOIN_WINDOW_MS = 10_000;
 
   const io = new Server(httpServer, {
     transports: ['websocket'],
@@ -80,6 +92,19 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
     maxHttpBufferSize: 8 * 1024,
     // Same-origin only: no `cors` option, so browsers refuse cross-origin handshakes.
     serveClient: false,
+    // Checked on the HTTP upgrade request, before any socket exists. Browsers do not apply CORS to
+    // WebSockets, so this is the only place a foreign page can be turned away (http/security.ts).
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin;
+      const ok = isOriginAllowed(origin, req.headers.host, allowedOrigins);
+      if (!ok) {
+        metrics?.wsConnectionsRefused.inc({ reason: 'origin' });
+        logger.warn('websocket refused: origin not allowed', {
+          origin: typeof origin === 'string' ? origin.slice(0, 100) : 'invalid',
+        });
+      }
+      callback(null, ok);
+    },
   });
 
   // With the adapter, `io.to(room).emit(...)` reaches the sockets of every instance through
@@ -104,6 +129,7 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
       const principal =
         typeof raw === 'string' && TOKEN.test(raw) ? await auth.authenticate(raw) : undefined;
       if (!principal || typeof raw !== 'string') {
+        metrics?.wsConnectionsRefused.inc({ reason: 'unauthenticated' });
         next(new Error('UNAUTHENTICATED'));
         return;
       }
@@ -168,6 +194,7 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
         await handler(socket, payload);
       } catch (error) {
         if (error instanceof AppError) {
+          if (name === 'auction.join') metrics?.wsJoins.inc({ result: error.code });
           ack(fail(error.code, error.message));
           return;
         }
@@ -180,8 +207,23 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
       }
     };
 
+  // Gauges are read at scrape time from the live server, so they cannot drift from reality.
+  metrics?.registry.onScrape(() => {
+    metrics.wsConnections.set(io.engine.clientsCount);
+    let rooms = 0;
+    for (const room of io.sockets.adapter.rooms.keys()) if (room.startsWith('auction:')) rooms += 1;
+    metrics.wsRooms.set(rooms);
+    if (deps.redis) {
+      metrics.redisUp.set(deps.redis.isUp() ? 1 : 0);
+      metrics.redisDropped.set(deps.redis.droppedPublishes());
+    }
+  });
+
   io.on('connection', (socket) => {
     const data = socket.data as SocketData;
+    metrics?.wsConnectionsTotal.inc();
+    // A sliding record of this connection's recent joins (in memory, per connection).
+    const joinTimes: number[] = [];
 
     socket.on('auction.join', (payload: unknown, maybeAck: unknown) => {
       const ack = toAck(maybeAck);
@@ -191,6 +233,13 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
           const parsed = joinPayloadSchema.safeParse(p);
           if (!parsed.success) throw new AppError(400, 'VALIDATION_FAILED', 'Invalid join payload');
           const { auctionId } = parsed.data;
+          const t = Date.now();
+          while (joinTimes.length > 0 && (joinTimes[0] as number) <= t - JOIN_WINDOW_MS)
+            joinTimes.shift();
+          if (joinTimes.length >= maxJoins) {
+            throw new AppError(429, 'RATE_LIMITED', 'Too many join requests on this connection');
+          }
+          joinTimes.push(t);
           const room = auctionRoom(auctionId);
 
           // A session may have been revoked or expired since the handshake.
@@ -219,6 +268,7 @@ export function attachRealtime(httpServer: http.Server, deps: RealtimeDeps): Rea
           s.emit('auction.snapshot', buildSnapshotEvent(auctionId, auction, recent.items));
           ack({ ok: true });
           scheduleCount(auctionId);
+          metrics?.wsJoins.inc({ result: 'ok' });
         },
         ack,
       )(socket, payload);

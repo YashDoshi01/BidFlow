@@ -19,6 +19,17 @@ x-api-environment: &api-environment
   # name stops resolving (a stopped container) each lookup blocks a thread for ~4 s. The real fix was to
   # stop opening a connection per readiness poll (ADR-033); this only adds headroom.
   UV_THREADPOOL_SIZE: '16'
+  # One NGINX in front: the client address is the one NGINX appended to X-Forwarded-For (ADR-061).
+  TRUST_PROXY_HOPS: '1'
+  # Every cluster test reaches the stack from ONE address (the Docker gateway), registers many users
+  # and logs them in: the per-address limits would throttle the tests themselves. The BID limits
+  # are real (not unlimited) because the cluster tests prove they work across instances; 60 per user per
+  # 10 s (production default: 20) is above what the older tests do in one window.
+  RATE_LIMIT_BID_USER_MAX: '60'
+  RATE_LIMIT_REGISTER_IP_MAX: '100000'
+  RATE_LIMIT_LOGIN_IP_MAX: '100000'
+  RATE_LIMIT_LOGIN_EMAIL_MAX: '1000'
+  RATE_LIMIT_READ_IP_MAX: '1000000'
 
 services:
   postgres:

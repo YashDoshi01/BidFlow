@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { parseInput } from '../../http/validate.ts';
 import {
   getAuth,
@@ -13,11 +13,19 @@ import { z } from 'zod';
 
 const auctionId = z.uuid();
 
-export function bidRoutes(bids: BidService, auth: AuthService): Router {
+/**
+ * `placeGuards` run after authentication and before the bid is judged (rate limits, supplied by the
+ * app). A refused request never takes a database connection.
+ */
+export function bidRoutes(
+  bids: BidService,
+  auth: AuthService,
+  placeGuards: RequestHandler[] = [],
+): Router {
   const router = Router();
 
   // The tenant (bidder) is the authenticated user; the body carries only the amount.
-  router.post('/auctions/:auctionId/bids', requireAuth(auth), async (req, res) => {
+  router.post('/auctions/:auctionId/bids', requireAuth(auth), ...placeGuards, async (req, res) => {
     const id = parseInput(auctionId, req.params['auctionId']);
     const input = parseInput(placeBidSchema, req.body);
     const key = parseInput(idempotencyKeySchema, req.get('Idempotency-Key'), 'Idempotency-Key');

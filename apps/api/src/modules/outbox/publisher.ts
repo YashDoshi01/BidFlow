@@ -115,6 +115,14 @@ export function createOutboxPublisher(options: OutboxPublisherOptions): OutboxPu
         }
         if (marked) {
           result.published += 1;
+          // Debug level: one line per event is too much at normal volume, but it is the line that ties
+          // an event id to its auction and sequence when someone follows one event through the system.
+          logger.debug('outbox event published', {
+            eventId: row.id,
+            auctionId: row.auction_id,
+            sequence: row.auction_event_sequence,
+            eventType: row.event_type,
+          });
         } else {
           result.leaseLost += 1;
           logger.warn('outbox lease lost before marking: the event may be delivered twice', {

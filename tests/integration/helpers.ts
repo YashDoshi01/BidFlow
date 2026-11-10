@@ -4,6 +4,11 @@ import { createRunningServer } from '../../apps/api/src/createServer.ts';
 import { createPool, type Db } from '../../apps/api/src/db/pool.ts';
 import { createLogger } from '../../apps/api/src/logging/logger.ts';
 import {
+  DEFAULT_RATE_LIMITS,
+  type RateLimitConfig,
+} from '../../apps/api/src/ratelimit/policies.ts';
+import type { RunningServer, ShutdownOptions } from '../../apps/api/src/createServer.ts';
+import {
   createOutboxPublisher,
   createPublishClient,
   createRedisEmitterSink,
@@ -32,12 +37,16 @@ export interface TestApp {
   redis: RedisPair | undefined;
   /** The embedded outbox publisher (publishes through this instance's own Socket.IO server). */
   outbox: OutboxPublisher | undefined;
+  /** Graceful shutdown of the HTTP server and WebSockets (the same code the real server runs). */
+  shutdown: (options?: ShutdownOptions) => Promise<void>;
+  running: RunningServer;
   close: () => Promise<void>;
 }
 
 export interface StartAppOptions {
   sessionTtlSeconds?: number;
   maxRoomsPerSocket?: number;
+  maxJoinsPerWindow?: number;
   /** Connect this instance to other instances through Redis (the Socket.IO adapter). */
   redisUrl?: string;
   instanceId?: string;
@@ -47,6 +56,14 @@ export interface StartAppOptions {
    * setup has a separate worker; tests of that path use startEmitterWorker). `false`: none.
    */
   outbox?: false;
+  /**
+   * Rate limits are OFF in tests by default (many tests send bursts from one user). Pass values to
+   * turn them on; unspecified numbers keep the production defaults.
+   */
+  rateLimits?: Partial<RateLimitConfig>;
+  trustProxyHops?: number;
+  allowedOrigins?: string[];
+  metricsToken?: string;
 }
 
 export async function startApp(options: StartAppOptions = {}): Promise<TestApp> {
@@ -68,6 +85,13 @@ export async function startApp(options: StartAppOptions = {}): Promise<TestApp> 
     ...(redis === undefined ? {} : { redis }),
     ...(options.instanceId === undefined ? {} : { instanceId: options.instanceId }),
     sessionTtlSeconds: options.sessionTtlSeconds ?? 3600,
+    rateLimits: { ...DEFAULT_RATE_LIMITS, enabled: false, ...options.rateLimits },
+    ...(options.trustProxyHops === undefined ? {} : { trustProxyHops: options.trustProxyHops }),
+    ...(options.allowedOrigins === undefined ? {} : { allowedOrigins: options.allowedOrigins }),
+    ...(options.metricsToken === undefined ? {} : { metricsToken: options.metricsToken }),
+    ...(options.maxJoinsPerWindow === undefined
+      ? {}
+      : { maxJoinsPerWindow: options.maxJoinsPerWindow }),
     ...(options.maxRoomsPerSocket === undefined
       ? {}
       : { maxRoomsPerSocket: options.maxRoomsPerSocket }),
@@ -91,11 +115,13 @@ export async function startApp(options: StartAppOptions = {}): Promise<TestApp> 
     io: running.realtime.io,
     redis,
     outbox,
+    shutdown: (o) => running.shutdown(o),
+    running,
     base: `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`,
     close: async () => {
       await outbox?.stop();
       // Closing Socket.IO also closes the HTTP server and all WebSocket connections.
-      await running.realtime.close();
+      await running.shutdown();
       await redis?.close();
       await db.end();
     },

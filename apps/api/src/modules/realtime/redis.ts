@@ -24,6 +24,13 @@ import type { Logger } from '../../logging/logger.ts';
 export interface RedisPair {
   pub: Redis;
   sub: Redis;
+  /**
+   * A third connection for rate-limit counters (Phase 8). Separate so a slow or failing limiter
+   * cannot delay Socket.IO publishes, and configured to FAIL FAST: no offline queue and a short
+   * command timeout, so while Redis is down a request is judged by the fallback policy at once
+   * instead of waiting.
+   */
+  limiter: Redis;
   /** Whether both connections are currently usable. */
   isUp: () => boolean;
   /** Publishes dropped since start because Redis was unreachable. */
@@ -41,7 +48,23 @@ export function createRedisPair(url: string, logger: Logger): RedisPair {
     enableOfflineQueue: false,
     maxRetriesPerRequest: 1,
   });
-  const sub = new Redis(url, { ...common, connectionName: 'bidflow-sub' });
+  // maxRetriesPerRequest: null = a queued command waits for as long as it takes. With ioredis's
+  // default (20) the adapter's one-time SUBSCRIBE was REJECTED after about a minute of Redis being
+  // unreachable at startup, and that rejection is unhandled inside the adapter: the process died.
+  // (Found in Phase 8 by starting an instance against a dead Redis.) "Reconnect forever" has to
+  // include the first connection.
+  const sub = new Redis(url, {
+    ...common,
+    connectionName: 'bidflow-sub',
+    maxRetriesPerRequest: null,
+  });
+  const limiter = new Redis(url, {
+    ...common,
+    connectionName: 'bidflow-limiter',
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 0,
+    commandTimeout: 250,
+  });
 
   let dropped = 0;
   let droppedDuringOutage = 0;
@@ -57,7 +80,7 @@ export function createRedisPair(url: string, logger: Logger): RedisPair {
       return 0;
     });
 
-  const watch = (client: Redis, role: 'pub' | 'sub'): void => {
+  const watch = (client: Redis, role: 'pub' | 'sub' | 'limiter'): void => {
     let up = false;
     client.on('ready', () => {
       if (!up) {
@@ -77,21 +100,28 @@ export function createRedisPair(url: string, logger: Logger): RedisPair {
   };
   watch(pub, 'pub');
   watch(sub, 'sub');
+  watch(limiter, 'limiter');
 
   return {
     pub,
     sub,
+    limiter,
     isUp: () => pub.status === 'ready' && sub.status === 'ready',
     droppedPublishes: () => dropped,
     close: async () => {
-      await Promise.allSettled([
-        pub.quit().catch(() => {
-          pub.disconnect();
+      // QUIT is polite only if the connection works; on a dead one it would wait for ever (the
+      // queue has no retry limit, above), so every client gets one second, then is cut.
+      await Promise.allSettled(
+        [pub, sub, limiter].map(async (client) => {
+          if (client.status === 'ready') {
+            await Promise.race([
+              client.quit(),
+              new Promise<void>((resolve) => setTimeout(resolve, 1000)),
+            ]).catch(() => undefined);
+          }
+          client.disconnect();
         }),
-        sub.quit().catch(() => {
-          sub.disconnect();
-        }),
-      ]);
+      );
     },
   };
 }

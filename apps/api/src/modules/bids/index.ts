@@ -3,6 +3,7 @@ export { bidRoutes } from './routes.ts';
 export {
   createBidService,
   PLACE_BID_OPERATION,
+  type BidObserver,
   type BidService,
   type BidTestHooks,
   type BidView,
