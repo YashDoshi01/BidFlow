@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ApiError, api } from '../api.ts';
+import { initial } from '../components/ui.tsx';
 import type { Session } from '../session.ts';
 
 interface Me {
@@ -64,6 +65,19 @@ export function AccountPage({
       )}
       {!me && !error && <p aria-live="polite">Loading…</p>}
       {me && (
+        <div className="profile">
+          <span
+            className="avatar large"
+            data-initial={initial(me.displayName)}
+            aria-hidden="true"
+          />
+          <div>
+            <p className="profile-name">{me.displayName}</p>
+            <p className="hint">Member since {new Date(me.createdAt).toLocaleDateString()}</p>
+          </div>
+        </div>
+      )}
+      {me && (
         <dl className="facts" data-testid="account">
           <div>
             <dt>Display name</dt>
@@ -83,10 +97,20 @@ export function AccountPage({
         Your display name is public: it appears next to your bids. Your email is never shown to
         other people.
       </p>
-      <p>
-        <a href="#/sell">Your auctions</a> · <a href="#/notifications">Notifications</a>
+      <p className="row-actions">
+        <a className="button small" href="#/sell">
+          Your auctions
+        </a>
+        <a className="button small" href="#/notifications">
+          Notifications
+        </a>
       </p>
-      <button type="button" onClick={onSignOut} data-testid="account-signout">
+      <button
+        type="button"
+        className="button danger"
+        onClick={onSignOut}
+        data-testid="account-signout"
+      >
         Sign out
       </button>
     </section>

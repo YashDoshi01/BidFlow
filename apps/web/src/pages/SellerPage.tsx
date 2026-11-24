@@ -1,5 +1,7 @@
 import { useState, type SyntheticEvent } from 'react';
 import { ApiError, api } from '../api.ts';
+import { IconPlus } from '../components/Icons.tsx';
+import { Cover, StatusBadge } from '../components/ui.tsx';
 import { useAuctionList, type ListFilters } from '../hooks/useAuctionList.ts';
 import { fromLocalInputValue, toLocalInputValue } from '../lib/datetime.ts';
 import type { AuctionView } from '../room/roomState.ts';
@@ -32,7 +34,7 @@ export function SellerPage({
 
   if (!session) {
     return (
-      <section className="card">
+      <section className="card empty-state">
         <h1>Your auctions</h1>
         <p>
           <a href="#/login">Sign in</a> to create and manage auctions.
@@ -58,25 +60,26 @@ export function SellerPage({
 
   return (
     <>
-      <section className="card">
-        <div className="title-row">
+      <section className="page-head">
+        <div>
+          <p className="eyebrow">Seller dashboard</p>
           <h1>Your auctions</h1>
-          {editing === null && (
-            <button
-              type="button"
-              className="primary"
-              onClick={() => {
-                setEditing('new');
-              }}
-              data-testid="new-auction"
-            >
-              New auction
-            </button>
-          )}
+          <p className="hint">
+            Drafts can be edited. Once published, an auction can no longer be changed.
+          </p>
         </div>
-        <p className="hint">
-          Drafts can be edited. Once published, an auction can no longer be changed.
-        </p>
+        {editing === null && (
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => {
+              setEditing('new');
+            }}
+            data-testid="new-auction"
+          >
+            <IconPlus /> New auction
+          </button>
+        )}
       </section>
 
       {editing !== null && (
@@ -96,44 +99,50 @@ export function SellerPage({
       )}
 
       <section className="card">
-        <label className="inline">
-          Show
-          <select
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as ListFilters['status']);
-            }}
-            data-testid="mine-status-filter"
-          >
-            <option value="">All</option>
-            <option value="DRAFT">Drafts</option>
-            <option value="SCHEDULED">Scheduled</option>
-            <option value="LIVE">Live</option>
-            <option value="ENDED">Ended</option>
-          </select>
-        </label>
+        <div className="section-head">
+          <h2>Listings</h2>
+          <label className="inline">
+            Show
+            <select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value as ListFilters['status']);
+              }}
+              data-testid="mine-status-filter"
+            >
+              <option value="">All</option>
+              <option value="DRAFT">Drafts</option>
+              <option value="SCHEDULED">Scheduled</option>
+              <option value="LIVE">Live</option>
+              <option value="ENDED">Ended</option>
+            </select>
+          </label>
+        </div>
         {list.error && (
           <div role="alert" className="error-box">
             <p>{list.error}</p>
-            <button type="button" onClick={list.reload}>
+            <button type="button" className="button" onClick={list.reload}>
               Try again
             </button>
           </div>
         )}
         {list.loading && list.items === null && <p aria-live="polite">Loading your auctions…</p>}
         {list.items?.length === 0 && !list.error && (
-          <p data-testid="mine-empty">
-            {status === '' ? 'You have not created an auction yet.' : 'None with that status.'}
-          </p>
+          <div className="empty-state" data-testid="mine-empty">
+            <p className="empty-title">
+              {status === '' ? 'You have not created an auction yet.' : 'None with that status.'}
+            </p>
+          </div>
         )}
-        <ul className="auction-list" data-testid="mine-list">
+        <ul className="seller-list" data-testid="mine-list">
           {list.items?.map((a) => (
             <li key={a.id} className="seller-row" data-testid="mine-row">
+              <Cover auction={a} size="thumb" />
               <div className="seller-main">
                 <a href={`#/auction/${a.id}`}>
                   <strong>{a.title}</strong>
                 </a>
-                <span className={`badge ${a.status.toLowerCase()}`}>{a.status}</span>
+                <StatusBadge status={a.status} />
                 <span className="meta">
                   {a.status === 'DRAFT' ? 'starts' : 'ends'}{' '}
                   {new Date(a.status === 'DRAFT' ? a.startsAt : a.endsAt).toLocaleString()} ·{' '}
@@ -145,6 +154,7 @@ export function SellerPage({
                 <div className="row-actions">
                   <button
                     type="button"
+                    className="button small"
                     onClick={() => {
                       setEditing(a);
                     }}
@@ -153,7 +163,7 @@ export function SellerPage({
                   </button>
                   <button
                     type="button"
-                    className="primary"
+                    className="button primary small"
                     disabled={publishing === a.id}
                     onClick={() => {
                       void publish(a);
@@ -172,9 +182,16 @@ export function SellerPage({
           ))}
         </ul>
         {list.hasMore && (
-          <button type="button" onClick={list.loadMore} disabled={list.loadingMore}>
-            {list.loadingMore ? 'Loading…' : 'Show more'}
-          </button>
+          <div className="center">
+            <button
+              type="button"
+              className="button"
+              onClick={list.loadMore}
+              disabled={list.loadingMore}
+            >
+              {list.loadingMore ? 'Loading…' : 'Show more'}
+            </button>
+          </div>
         )}
       </section>
     </>
@@ -251,7 +268,7 @@ function AuctionForm({
   }
 
   return (
-    <section className="card" aria-labelledby="form-title">
+    <section className="card form-card" aria-labelledby="form-title">
       <h2 id="form-title">{existing ? 'Edit draft' : 'New auction'}</h2>
       <form
         onSubmit={(e) => {
@@ -348,7 +365,7 @@ function AuctionForm({
             />
           </label>
         </div>
-        <p className="hint">
+        <p className="hint callout">
           Late bids can extend the end (anti-sniping): the last two minutes, up to 10 times, at most
           one hour past the end you set here.
         </p>
@@ -358,12 +375,12 @@ function AuctionForm({
           </p>
         )}
         <div className="row-actions">
-          <button type="submit" disabled={busy !== null} data-testid="f-save">
+          <button type="submit" className="button" disabled={busy !== null} data-testid="f-save">
             {busy === 'save' ? 'Saving…' : 'Save draft'}
           </button>
           <button
             type="button"
-            className="primary"
+            className="button primary"
             disabled={busy !== null}
             onClick={(e) => {
               const form = e.currentTarget.form;

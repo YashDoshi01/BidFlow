@@ -1,4 +1,12 @@
 import { useEffect } from 'react';
+import {
+  IconAlert,
+  IconClock,
+  IconGavel,
+  IconInbox,
+  IconRefresh,
+  IconTrophy,
+} from '../components/Icons.tsx';
 import type { NotificationsHandle } from '../hooks/useNotifications.ts';
 import { describeNotification } from '../lib/notificationText.ts';
 import type { Session } from '../session.ts';
@@ -33,11 +41,12 @@ export function NotificationsPage({
       <div className="title-row">
         <h1>Notifications</h1>
         <div className="row-actions">
-          <button type="button" onClick={n.refresh}>
-            Refresh
+          <button type="button" className="button small" onClick={n.refresh}>
+            <IconRefresh /> Refresh
           </button>
           <button
             type="button"
+            className="button small"
             onClick={() => {
               void n.markAllRead();
             }}
@@ -63,45 +72,65 @@ export function NotificationsPage({
       )}
       {n.status === 'loading' && <p aria-live="polite">Loading notifications…</p>}
       {n.status === 'ready' && n.items.length === 0 && (
-        <p data-testid="notifications-empty">
-          Nothing yet. You will be told here when you are outbid, when an auction you bid on is
-          about to end, and when it ends.
-        </p>
+        <div className="empty-state" data-testid="notifications-empty">
+          <IconInbox />
+          <p>
+            Nothing yet. You will be told here when you are outbid, when an auction you bid on is
+            about to end, and when it ends.
+          </p>
+        </div>
       )}
       <ul className="notifications" data-testid="notifications-list">
         {n.items.map((item) => {
           const text = describeNotification(item);
           const unread = item.readAt === null;
           return (
-            <li key={item.id} className={unread ? 'unread' : ''} data-testid="notification">
-              <a
-                href={text.href}
-                onClick={() => {
-                  if (unread) void n.markRead(item.id);
-                }}
-              >
-                <strong>{text.title}</strong>
-              </a>
-              {unread && <span className="dot">unread</span>}
-              <p>{text.body}</p>
-              <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
-              {unread && (
-                <button
-                  type="button"
-                  className="link"
+            <li
+              key={item.id}
+              className={`notification type-${item.type}${unread ? ' unread' : ''}`}
+              data-testid="notification"
+            >
+              <span className="notification-icon" aria-hidden="true">
+                {item.type === 'auction_won' ? (
+                  <IconTrophy />
+                ) : item.type === 'ending_soon' ? (
+                  <IconClock />
+                ) : item.type === 'outbid' ? (
+                  <IconAlert />
+                ) : (
+                  <IconGavel />
+                )}
+              </span>
+              <div className="notification-body">
+                <a
+                  href={text.href}
                   onClick={() => {
-                    void n.markRead(item.id);
+                    if (unread) void n.markRead(item.id);
                   }}
                 >
-                  Mark as read
-                </button>
-              )}
+                  <strong>{text.title}</strong>
+                </a>
+                {unread && <span className="dot">unread</span>}
+                <p>{text.body}</p>
+                <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
+                {unread && (
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      void n.markRead(item.id);
+                    }}
+                  >
+                    Mark as read
+                  </button>
+                )}
+              </div>
             </li>
           );
         })}
       </ul>
       {n.hasMore && (
-        <button type="button" onClick={n.loadMore}>
+        <button type="button" className="button" onClick={n.loadMore}>
           Show older
         </button>
       )}

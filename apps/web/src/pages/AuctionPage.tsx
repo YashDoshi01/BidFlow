@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { ApiError, api } from '../api.ts';
 import { Countdown } from '../components/Countdown.tsx';
+import {
+  IconAlert,
+  IconArrowLeft,
+  IconClock,
+  IconRefresh,
+  IconTrophy,
+} from '../components/Icons.tsx';
+import { Cover, StatusBadge, initial } from '../components/ui.tsx';
+import { quickBids } from '../lib/money.ts';
 import { markNotificationsStale } from '../hooks/useNotifications.ts';
 import { useOnline } from '../hooks/useOnline.ts';
 import { myBidStatus, type MyBidStatus } from '../lib/bidStatus.ts';
@@ -139,11 +148,13 @@ export function AuctionPage({
 
   if (joinError === 'NOT_FOUND') {
     return (
-      <section className="card">
+      <section className="card empty-state">
         <h1>Auction not found</h1>
         <p>It may not exist, or it may be a draft that is not yours.</p>
         <p>
-          <a href="#/">Back to auctions</a>
+          <a className="button" href="#/">
+            Back to auctions
+          </a>
         </p>
       </section>
     );
@@ -151,14 +162,15 @@ export function AuctionPage({
 
   if (!auction) {
     return (
-      <section className="card">
+      <section className="card empty-state">
+        <div className="spinner" aria-hidden="true" />
         <p aria-live="polite" data-testid="room-loading">
           {joinError ? `Could not open the auction (${joinError}).` : 'Connecting to the auction…'}
         </p>
         <ConnectionBadge status={state.connection} />
         {(joinError !== null || state.connection === 'disconnected') && (
           <p>
-            <button type="button" onClick={refresh} data-testid="refresh">
+            <button type="button" className="button" onClick={refresh} data-testid="refresh">
               Try again
             </button>
           </p>
@@ -175,13 +187,18 @@ export function AuctionPage({
     ? state.bids.find((b) => b.id === auction.winningBidId)
     : undefined;
 
+  const suggestions = canBid ? quickBids(auction.minimumNextBid, auction.minimumIncrement) : [];
+
   return (
     <>
-      <p>
-        <a href="#/">← All auctions</a>
+      <p className="back-row">
+        <a href="#/" className="back-link">
+          <IconArrowLeft /> All auctions
+        </a>
       </p>
       {stale && (
         <div role="status" className="warn-box" data-testid="stale-banner">
+          <IconAlert />
           <p>
             {state.connection === 'connecting' ? 'Connecting…' : 'Live updates are paused.'} The
             price and time below were correct at event #{auction.eventSequence}, and may be out of
@@ -189,171 +206,218 @@ export function AuctionPage({
             {online ? '' : ' You are offline.'} The server still checks every bid against the real
             state.
           </p>
-          <button type="button" onClick={refresh} data-testid="refresh">
+          <button type="button" className="button small" onClick={refresh} data-testid="refresh">
             Refresh from the server
           </button>
         </div>
       )}
-      <section className="card">
-        <div className="title-row">
-          <h1>{auction.title}</h1>
-          <span className={`badge ${auction.status.toLowerCase()}`} data-testid="status">
-            {auction.status}
-          </span>
-        </div>
-        {auction.description && <p className="description">{auction.description}</p>}
-        <dl className="facts">
-          <div>
-            <dt>{auction.status === 'ENDED' ? 'Final price' : 'Current price'}</dt>
-            <dd className="big" data-testid="price">
-              {auction.currentPrice} <small>{auction.currency}</small>
-            </dd>
-          </div>
-          <div>
-            <dt>Next bid at least</dt>
-            <dd data-testid="min-next">
-              {auction.status === 'ENDED' ? '—' : (auction.minimumNextBid ?? 'none possible')}
-            </dd>
-          </div>
-          <Countdown auction={auction} />
-          <div>
-            <dt>Bids</dt>
-            <dd data-testid="bid-count">{auction.bidSequence}</dd>
-          </div>
-        </dl>
-        <p className="hint" data-testid="schedule">
-          Started {new Date(auction.startsAt).toLocaleString()} · ends{' '}
-          <span data-testid="ends-at">{new Date(auction.endsAt).toLocaleString()}</span>
-          {auction.extensionCount > 0 && (
-            <span data-testid="extensions">
-              {' '}
-              · extended {String(auction.extensionCount)}× by late bids
-            </span>
-          )}
-        </p>
-        <p className="status-row">
-          <ConnectionBadge status={state.connection} />
-          <span data-testid="participants">
-            {state.participants === null ? '' : `${String(state.participants)} watching`}
-          </span>
-          {!stale && (
-            <button type="button" className="link" onClick={refresh} data-testid="refresh">
-              Refresh
-            </button>
-          )}
-        </p>
-      </section>
-
-      <MyStatus status={mine} currency={auction.currency} />
-
-      {auction.status === 'ENDED' && (
-        <section className="card result" data-testid="result" aria-live="polite">
-          <h2>Auction ended</h2>
-          {auction.winningBidId === null ? (
-            <p>It ended without any bids.</p>
-          ) : (
-            <p>
-              Won by <strong>{winnerBid?.bidderDisplayName ?? 'a bidder'}</strong> at{' '}
-              <strong>
-                {auction.currentPrice} {auction.currency}
-              </strong>
-              . This is a demo: no payment is taken.
+      <div className="room">
+        <section className="card room-head">
+          <Cover auction={auction} size="hero" />
+          <div className="room-head-body">
+            <div className="title-row">
+              <h1>{auction.title}</h1>
+              <StatusBadge status={auction.status} testId="status" />
+            </div>
+            {auction.description && <p className="description">{auction.description}</p>}
+            <p className="hint schedule" data-testid="schedule">
+              <IconClock /> Started {new Date(auction.startsAt).toLocaleString()} · ends{' '}
+              <span data-testid="ends-at">{new Date(auction.endsAt).toLocaleString()}</span>
+              {auction.extensionCount > 0 && (
+                <span data-testid="extensions">
+                  {' '}
+                  · extended {String(auction.extensionCount)}× by late bids
+                </span>
+              )}
             </p>
-          )}
+            <p className="status-row">
+              <ConnectionBadge status={state.connection} />
+              <span data-testid="participants" className="participants">
+                {state.participants === null ? '' : `${String(state.participants)} watching`}
+              </span>
+              {!stale && (
+                <button type="button" className="link" onClick={refresh} data-testid="refresh">
+                  <IconRefresh /> Refresh
+                </button>
+              )}
+            </p>
+          </div>
         </section>
-      )}
 
-      {auction.status !== 'ENDED' && (
-        <section className="card">
-          <h2>Place a bid</h2>
-          {canBid && (
-            <form
-              onSubmit={(e) => {
-                void submit(e);
-              }}
-            >
-              <label>
-                Your bid ({auction.currency})
-                <input
-                  inputMode="decimal"
-                  pattern="\d{1,10}(\.\d{1,2})?"
-                  required
-                  value={amount}
-                  placeholder={auction.minimumNextBid ?? ''}
-                  onChange={(e) => {
-                    setAmount(e.target.value);
-                  }}
-                  data-testid="bid-input"
-                />
-              </label>
-              <div aria-live="polite">
-                {error && (
-                  <p role="alert" className="error" data-testid="bid-error">
-                    {error}
+        <aside className="room-side" aria-label="Price and bidding">
+          <section className="card bid-panel">
+            <dl className="facts">
+              <div className="fact-price">
+                <dt>{auction.status === 'ENDED' ? 'Final price' : 'Current price'}</dt>
+                <dd key={auction.currentPrice} className="big flash" data-testid="price">
+                  {auction.currentPrice} <small>{auction.currency}</small>
+                </dd>
+              </div>
+              <div>
+                <dt>Next bid at least</dt>
+                <dd data-testid="min-next">
+                  {auction.status === 'ENDED' ? '—' : (auction.minimumNextBid ?? 'none possible')}
+                </dd>
+              </div>
+              <Countdown auction={auction} />
+              <div>
+                <dt>Bids</dt>
+                <dd data-testid="bid-count">{auction.bidSequence}</dd>
+              </div>
+            </dl>
+
+            <MyStatus status={mine} currency={auction.currency} />
+
+            {auction.status === 'ENDED' && (
+              <div className="result" data-testid="result" aria-live="polite">
+                <IconTrophy />
+                <div>
+                  <h2>Auction ended</h2>
+                  {auction.winningBidId === null ? (
+                    <p>It ended without any bids.</p>
+                  ) : (
+                    <p>
+                      Won by <strong>{winnerBid?.bidderDisplayName ?? 'a bidder'}</strong> at{' '}
+                      <strong>
+                        {auction.currentPrice} {auction.currency}
+                      </strong>
+                      . This is a demo: no payment is taken.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {auction.status !== 'ENDED' && (
+              <div className="bid-box">
+                <h2>Place a bid</h2>
+                {canBid && (
+                  <form
+                    onSubmit={(e) => {
+                      void submit(e);
+                    }}
+                  >
+                    <label>
+                      Your bid ({auction.currency})
+                      <span className="money-input">
+                        <input
+                          inputMode="decimal"
+                          pattern="\d{1,10}(\.\d{1,2})?"
+                          required
+                          value={amount}
+                          placeholder={auction.minimumNextBid ?? ''}
+                          onChange={(e) => {
+                            setAmount(e.target.value);
+                          }}
+                          data-testid="bid-input"
+                        />
+                        <span className="money-suffix" aria-hidden="true">
+                          {auction.currency}
+                        </span>
+                      </span>
+                    </label>
+                    {suggestions.length > 0 && (
+                      <div className="chips" role="group" aria-label="Quick amounts">
+                        {suggestions.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            className={`chip${amount === s ? ' selected' : ''}`}
+                            onClick={() => {
+                              setAmount(s);
+                            }}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div aria-live="polite">
+                      {error && (
+                        <p role="alert" className="error" data-testid="bid-error">
+                          {error}
+                        </p>
+                      )}
+                      {accepted && (
+                        <p className="ok" data-testid="bid-accepted">
+                          {accepted}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="submit"
+                      className="button primary block"
+                      disabled={pending}
+                      data-testid="bid-submit"
+                    >
+                      {pending ? 'Waiting for the server…' : 'Place bid'}
+                    </button>
+                    <p className="hint">
+                      Your bid is shown only after the server accepts it. A bid in the last two
+                      minutes extends the auction.
+                    </p>
+                  </form>
+                )}
+                {!session && (
+                  <p>
+                    <a className="button primary block" href="#/login">
+                      Sign in
+                    </a>{' '}
+                    <span className="hint">to place a bid.</span>
                   </p>
                 )}
-                {accepted && (
-                  <p className="ok" data-testid="bid-accepted">
-                    {accepted}
+                {isSeller && (
+                  <p className="note">
+                    You are the seller of this auction. <a href="#/sell">Your auctions</a>
+                  </p>
+                )}
+                {session && !isSeller && auction.status !== 'LIVE' && (
+                  <p className="note">
+                    {auction.status === 'SCHEDULED'
+                      ? 'This auction has not started yet.'
+                      : 'This auction is not live.'}
                   </p>
                 )}
               </div>
-              <button type="submit" className="primary" disabled={pending} data-testid="bid-submit">
-                {pending ? 'Waiting for the server…' : 'Place bid'}
-              </button>
-              <p className="hint">
-                Your bid is shown only after the server accepts it. A bid in the last two minutes
-                extends the auction.
-              </p>
-            </form>
-          )}
-          {!session && (
-            <p>
-              <a href="#/login">Sign in</a> to place a bid.
+            )}
+          </section>
+        </aside>
+
+        <section className="card room-bids">
+          <div className="section-head">
+            <h2>Bids</h2>
+            <span className="bid-pill">{auction.bidSequence}</span>
+          </div>
+          {state.bids.length === 0 && (
+            <p className="empty-inline" data-testid="no-bids">
+              No bids yet.
             </p>
           )}
-          {isSeller && (
-            <p>
-              You are the seller of this auction. <a href="#/sell">Your auctions</a>
-            </p>
-          )}
-          {session && !isSeller && auction.status !== 'LIVE' && (
-            <p>
-              {auction.status === 'SCHEDULED'
-                ? 'This auction has not started yet.'
-                : 'This auction is not live.'}
+          <ol className="bids" aria-live="polite" data-testid="bids">
+            {state.bids.map((b, i) => (
+              <li
+                key={b.id}
+                data-testid="bid-row"
+                className={`${b.bidderId === session?.userId ? 'mine' : ''}${i === 0 ? ' top' : ''}`}
+              >
+                <span className="seq">#{b.bidSequence}</span>
+                <span className="who" data-initial={initial(b.bidderDisplayName)}>
+                  {b.bidderDisplayName}
+                  {b.bidderId === session?.userId && <em> (you)</em>}
+                </span>
+                <span className="amount">{b.amount}</span>
+                <time dateTime={b.acceptedAt}>{new Date(b.acceptedAt).toLocaleTimeString()}</time>
+              </li>
+            ))}
+          </ol>
+          {Number(auction.bidSequence) > state.bids.length && (
+            <p className="hint" data-testid="bids-truncated">
+              Showing the latest {String(Math.min(state.bids.length, MAX_BIDS_KEPT))} of{' '}
+              {auction.bidSequence} bids.
             </p>
           )}
         </section>
-      )}
-
-      <section className="card">
-        <h2>Bids</h2>
-        {state.bids.length === 0 && <p data-testid="no-bids">No bids yet.</p>}
-        <ol className="bids" aria-live="polite" data-testid="bids">
-          {state.bids.map((b) => (
-            <li
-              key={b.id}
-              data-testid="bid-row"
-              className={b.bidderId === session?.userId ? 'mine' : ''}
-            >
-              <span className="seq">#{b.bidSequence}</span>
-              <span className="who">
-                {b.bidderDisplayName}
-                {b.bidderId === session?.userId && <em> (you)</em>}
-              </span>
-              <span className="amount">{b.amount}</span>
-              <time dateTime={b.acceptedAt}>{new Date(b.acceptedAt).toLocaleTimeString()}</time>
-            </li>
-          ))}
-        </ol>
-        {Number(auction.bidSequence) > state.bids.length && (
-          <p className="hint" data-testid="bids-truncated">
-            Showing the latest {String(Math.min(state.bids.length, MAX_BIDS_KEPT))} of{' '}
-            {auction.bidSequence} bids.
-          </p>
-        )}
-      </section>
+      </div>
     </>
   );
 }
@@ -396,6 +460,7 @@ function ConnectionBadge({ status }: { status: ConnectionStatus }) {
     status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting…' : 'Reconnecting…';
   return (
     <span className={`conn ${status}`} data-testid="connection" role="status">
+      <span className="conn-dot" aria-hidden="true" />
       {label}
     </span>
   );

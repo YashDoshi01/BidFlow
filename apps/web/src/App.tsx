@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, syncServerClock } from './api.ts';
+import { IconBell, IconGrid, IconLogout, IconTag, LogoMark } from './components/Icons.tsx';
+import { initial } from './components/ui.tsx';
 import { useNotifications } from './hooks/useNotifications.ts';
 import { useOnline } from './hooks/useOnline.ts';
 import { AccountPage } from './pages/AccountPage.tsx';
@@ -99,56 +101,80 @@ export function App() {
     setSession(null);
   }, []);
 
+  const current = (name: Route['name']): 'page' | undefined =>
+    route.name === name ? 'page' : undefined;
+
   return (
     <>
       <a className="skip-link" href="#main">
         Skip to content
       </a>
       <header className="topbar">
-        <a className="brand" href="#/">
-          BidFlow
-        </a>
-        <span className="demo-note">Demo: simulated bids, no real money</span>
-        <nav aria-label="Main">
-          <a href="#/" aria-current={route.name === 'list' ? 'page' : undefined}>
-            Auctions
+        <div className="topbar-inner">
+          <a className="brand" href="#/" aria-label="BidFlow, home">
+            <LogoMark />
+            <span className="brand-name">BidFlow</span>
           </a>
-          {session && (
-            <>
-              <a href="#/sell" aria-current={route.name === 'sell' ? 'page' : undefined}>
-                Sell
+          <span className="demo-pill" title="Bids are simulated. No real money changes hands.">
+            Demo
+          </span>
+          <nav aria-label="Main" className="main-nav">
+            <a href="#/" className="nav-link" aria-current={current('list')}>
+              <IconGrid />
+              <span className="nav-text">Auctions</span>
+            </a>
+            {session && (
+              <>
+                <a href="#/sell" className="nav-link" aria-current={current('sell')}>
+                  <IconTag />
+                  <span className="nav-text">Sell</span>
+                </a>
+                <a
+                  href="#/notifications"
+                  className="nav-link nav-bell"
+                  aria-current={current('notifications')}
+                  aria-label={
+                    notifications.unreadCount > 0
+                      ? `Notifications, ${String(notifications.unreadCount)} unread`
+                      : 'Notifications'
+                  }
+                  data-testid="bell"
+                >
+                  <IconBell />
+                  <span className="nav-text">Notifications</span>
+                  {notifications.unreadCount > 0 && (
+                    <span className="count" data-testid="unread-count">
+                      {notifications.unreadCount > 99 ? '99+' : notifications.unreadCount}
+                    </span>
+                  )}
+                </a>
+                <a
+                  href="#/account"
+                  className="user-chip"
+                  data-initial={initial(session.displayName)}
+                  data-testid="whoami"
+                  aria-current={current('account')}
+                >
+                  {session.displayName}
+                </a>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={signOut}
+                  aria-label="Sign out"
+                  title="Sign out"
+                >
+                  <IconLogout />
+                </button>
+              </>
+            )}
+            {!session && (
+              <a href="#/login" className="button primary small">
+                Sign in
               </a>
-              <a
-                href="#/notifications"
-                aria-current={route.name === 'notifications' ? 'page' : undefined}
-                aria-label={
-                  notifications.unreadCount > 0
-                    ? `Notifications, ${String(notifications.unreadCount)} unread`
-                    : 'Notifications'
-                }
-                data-testid="bell"
-              >
-                Notifications
-                {notifications.unreadCount > 0 && (
-                  <span className="count" data-testid="unread-count">
-                    {notifications.unreadCount > 99 ? '99+' : notifications.unreadCount}
-                  </span>
-                )}
-              </a>
-              <a
-                href="#/account"
-                data-testid="whoami"
-                aria-current={route.name === 'account' ? 'page' : undefined}
-              >
-                {session.displayName}
-              </a>
-              <button type="button" className="link" onClick={signOut}>
-                Sign out
-              </button>
-            </>
-          )}
-          {!session && <a href="#/login">Sign in</a>}
-        </nav>
+            )}
+          </nav>
+        </div>
       </header>
       {!online && (
         <p role="status" className="offline-banner" data-testid="offline">
@@ -156,7 +182,7 @@ export function App() {
           connection is back.
         </p>
       )}
-      <main id="main" ref={mainRef} tabIndex={-1}>
+      <main id="main" ref={mainRef} tabIndex={-1} className={`page page-${route.name}`}>
         {route.name === 'login' && <AuthPage onSignedIn={signIn} />}
         {route.name === 'list' && <AuctionsPage session={session} />}
         {route.name === 'sell' && <SellerPage session={session} onSignOut={signOut} />}
@@ -168,6 +194,22 @@ export function App() {
           <AuctionPage key={route.id} auctionId={route.id} session={session} onSignOut={signOut} />
         )}
       </main>
+      <footer className="site-footer">
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <LogoMark />
+            <div>
+              <strong>BidFlow</strong>
+              <p>Real-time auctions. A demo: bids are simulated and no real money changes hands.</p>
+            </div>
+          </div>
+          <nav aria-label="Footer" className="footer-links">
+            <a href="#/">Browse</a>
+            <a href="#/sell">Sell</a>
+            <a href="#/account">Account</a>
+          </nav>
+        </div>
+      </footer>
     </>
   );
 }

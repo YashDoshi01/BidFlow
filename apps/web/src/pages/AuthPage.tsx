@@ -1,5 +1,6 @@
 import { useState, type SyntheticEvent } from 'react';
 import { ApiError, api } from '../api.ts';
+import { IconBolt, IconShield, IconTimerPlus, LogoMark } from '../components/Icons.tsx';
 import type { Session } from '../session.ts';
 
 interface LoginResponse {
@@ -37,73 +38,95 @@ export function AuthPage({ onSignedIn }: { onSignedIn: (session: Session) => voi
   }
 
   return (
-    <section className="card narrow">
-      <h1>{mode === 'login' ? 'Sign in' : 'Create an account'}</h1>
-      <form
-        onSubmit={(e) => {
-          void submit(e);
-        }}
-      >
-        <label>
-          Email
-          <input
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-            }}
-          />
-        </label>
-        {mode === 'register' && (
+    <div className="auth-layout">
+      <aside className="auth-aside" aria-hidden="true">
+        <LogoMark />
+        <p className="auth-quote">Every bid, the moment it lands.</p>
+        <ul className="auth-points">
+          <li>
+            <IconBolt /> Live prices over WebSockets
+          </li>
+          <li>
+            <IconTimerPlus /> Anti-sniping: late bids extend the clock
+          </li>
+          <li>
+            <IconShield /> Simulated bids, no real money
+          </li>
+        </ul>
+      </aside>
+      <section className="card auth-card">
+        <h1>{mode === 'login' ? 'Sign in' : 'Create an account'}</h1>
+        <p className="hint auth-sub">
+          {mode === 'login'
+            ? 'Welcome back. Sign in to bid and to sell.'
+            : 'It takes a few seconds. Your email is never shown to anyone.'}
+        </p>
+        <form
+          onSubmit={(e) => {
+            void submit(e);
+          }}
+        >
           <label>
-            Display name <small>(shown next to your bids; it is public)</small>
+            Email
             <input
-              type="text"
-              maxLength={50}
+              type="email"
+              autoComplete="email"
               required
-              value={displayName}
+              value={email}
               onChange={(e) => {
-                setDisplayName(e.target.value);
+                setEmail(e.target.value);
               }}
             />
           </label>
-        )}
-        <label>
-          Password <small>(at least 10 characters)</small>
-          <input
-            type="password"
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            minLength={10}
-            required
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
+          {mode === 'register' && (
+            <label>
+              Display name <small>(shown next to your bids; it is public)</small>
+              <input
+                type="text"
+                maxLength={50}
+                required
+                value={displayName}
+                onChange={(e) => {
+                  setDisplayName(e.target.value);
+                }}
+              />
+            </label>
+          )}
+          <label>
+            Password <small>(at least 10 characters)</small>
+            <input
+              type="password"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              minLength={10}
+              required
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+              }}
+            />
+          </label>
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
+          <button type="submit" className="button primary block" disabled={busy}>
+            {mode === 'login' ? 'Sign in' : 'Register and sign in'}
+          </button>
+        </form>
+        <p className="auth-switch">
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              setMode(mode === 'login' ? 'register' : 'login');
+              setError(null);
             }}
-          />
-        </label>
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
-        <button type="submit" className="primary" disabled={busy}>
-          {mode === 'login' ? 'Sign in' : 'Register and sign in'}
-        </button>
-      </form>
-      <p>
-        <button
-          type="button"
-          className="link"
-          onClick={() => {
-            setMode(mode === 'login' ? 'register' : 'login');
-            setError(null);
-          }}
-        >
-          {mode === 'login' ? 'Need an account? Register' : 'Have an account? Sign in'}
-        </button>
-      </p>
-    </section>
+          >
+            {mode === 'login' ? 'Need an account? Register' : 'Have an account? Sign in'}
+          </button>
+        </p>
+      </section>
+    </div>
   );
 }
