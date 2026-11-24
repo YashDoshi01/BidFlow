@@ -1,0 +1,52 @@
+{
+  "scenario": "hot-auction-run2",
+  "workload": {
+    "kind": "many bidders on ONE auction (row-lock contention)",
+    "concurrentBidders": 50,
+    "auctions": 1,
+    "bidding": "closed loop: next bid is sent when the previous answer arrives; each bidder bids the minimum it believes is acceptable plus 0-2 increments; it learns the real minimum from the answer",
+    "seconds": 20,
+    "seed": "rng(1000 + bidderIndex); users and tokens derived from the tag"
+  },
+  "measured": {
+    "requestsPerSecond": 419.43,
+    "acceptedPerSecond": 21.14,
+    "outcomes": {
+      "201": 425,
+      "409 BID_TOO_LOW": 8008
+    },
+    "latencyAllMs": {
+      "count": 8433,
+      "min": 47.27,
+      "mean": 118.86,
+      "p50": 110.77,
+      "p90": 149.67,
+      "p95": 169.92,
+      "p99": 284.55,
+      "max": 417.13
+    },
+    "latencyAcceptedMs": {
+      "count": 425,
+      "min": 57.32,
+      "mean": 103.98,
+      "p50": 99.53,
+      "p90": 134.55,
+      "p95": 153.64,
+      "p99": 255.76,
+      "max": 390.75
+    },
+    "latencyRejectedMs": {
+      "count": 8008,
+      "min": 47.27,
+      "mean": 119.65,
+      "p50": 111.23,
+      "p90": 150.25,
+      "p95": 170.87,
+      "p99": 284.55,
+      "max": 417.13
+    },
+    "bidsInDatabase": 425,
+    "sessionsWaitingOnLockAtTheEnd": 0
+  },
+  "violations": []
+}

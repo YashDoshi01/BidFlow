@@ -19,7 +19,7 @@ The full plan is in `BidFlow_Implementation_and_Learning_Plan.md`. Working rules
 | 6     | Done - lifecycle worker, anti-sniping, notifications |
 | 7     | Done - full React UI, discovery, seller dashboard    |
 | 8     | Done - rate limits, metrics, security policy, drain  |
-| 9     | Not started                                          |
+| 9     | Done - load tests, fault injection, final evidence   |
 
 Phase 1 added PostgreSQL migrations, registration/login/logout with server-side sessions, and auctions you
 can create, edit (while draft), publish, list and fetch. Phase 2 adds `POST /auctions/:id/bids` with
@@ -32,7 +32,13 @@ bid status, an authoritative countdown, stale/offline/reconnect states with a ma
 page. Phase 8 makes it safer to operate: Redis-backed rate limits shared by all instances (with a documented fallback when
 Redis is down), a Prometheus metrics page, request-correlated logs that carry no secrets, a WebSocket origin check, security
 headers and a CSP, and a graceful draining shutdown; the threat model is `docs/SECURITY.md` and the metrics/SLIs are
-`docs/OBSERVABILITY.md`. API reference: `docs/API.md`. Data model:
+`docs/OBSERVABILITY.md`. Phase 9 measures it: repeatable load and
+fault-injection runs against a throwaway cluster, with the database checked for correctness after every run
+(`docs/LOAD_TESTING.md`, `docs/FAILURE_MODES.md`, raw results in `bench/results/`). It found and fixed a crash
+(both API processes exited when PostgreSQL stopped under load) and showed that stale bids queue on the auction row lock;
+refusing them without the lock raised measured hot-auction throughput by about 40% on this machine; the numbers are from one laptop with the load generator
+on the same machine, so they describe shapes, not capacity. Diagrams, a demo script and interview notes:
+`docs/DIAGRAMS_AND_DEMO.md`. API reference: `docs/API.md`. Data model:
 `docs/DATA_MODEL.md`.
 
 ## Requirements
@@ -81,6 +87,7 @@ the database volume.
 | `npm run dev:worker`                  | The outbox worker (publishes committed bid events to Redis). Run it next to `dev:api`: without it bids are accepted but not announced                                                                                                                     |
 | `npm run dev:lifecycle`               | The lifecycle worker: starts auctions at `startsAt`, ends them at `endsAt` (winner, events, notifications), writes "ending soon" notifications. Run it next to `dev:api`: without it a LIVE auction stays LIVE past its end time (bids are still refused) |
 | `npm run outbox -- stats`             | Operator tool for the outbox: `stats`, `failed`, `retry <id\|--all> --reason "..."` (see `docs/OPERATIONS.md`)                                                                                                                                            |
+| `npm run load` / `load:report`        | Load and fault-injection scenarios against a throwaway cluster (needs Docker; minutes), then markdown tables from `bench/results/`. See `docs/LOAD_TESTING.md`. Not part of the pass/fail suite: it exits 1 only if a database invariant failed           |
 | `npm run dev:web` / `build:web`       | Vite dev server / production build of `apps/web`                                                                                                                                                                                                          |
 
 The API runs TypeScript directly (Node 24 type stripping): there is no build step for the API.
@@ -96,7 +103,8 @@ apps/workers/        the outbox worker and the lifecycle worker (same image as t
 apps/web/            React + Vite client (src/room = room state + socket hook, src/pages)
 db/migrations/       numbered SQL files
 infra/               compose.yaml (dev PostgreSQL + Redis), compose.test.yaml (throwaway test DB)
-scripts/             check-infra, migrate, test-integration
+scripts/             check-infra, migrate, test-integration, load/ (load tests and report)
+bench/results/       raw results of the load runs (one folder per run, with environment.json)
 tests/integration/   real-PostgreSQL and WebSocket tests
 tests/e2e/           real-browser tests
 docs/                decisions, architecture, product rules, learning log, bugs, teaching reports

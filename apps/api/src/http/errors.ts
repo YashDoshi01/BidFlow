@@ -19,6 +19,7 @@ export type ErrorCode =
   | 'BIDDER_IS_SELLER'
   | 'IDEMPOTENCY_KEY_REUSED'
   | 'RATE_LIMITED'
+  | 'TEMPORARILY_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
 export interface ErrorDetail {

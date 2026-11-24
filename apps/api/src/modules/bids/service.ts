@@ -8,6 +8,7 @@ import {
 import { AppError } from '../../http/errors.ts';
 import { decodeCursor, encodeCursor } from '../../http/pagination.ts';
 import {
+  PG_CHECK_VIOLATION,
   PG_UNIQUE_VIOLATION,
   pgCode,
   pgConstraint,
@@ -93,6 +94,22 @@ export function requestHash(auctionId: string, amount: string): string {
     .digest('hex');
 }
 
+const CLOCK_GUARD_MESSAGE = 'accepted_at must be taken inside the bid transaction';
+
+/**
+ * ADR-072/ADR-074: the database refused a bid whose timestamp fell outside the transaction's own
+ * clock readings (seen 4 times in 407,308 requests, probably a wall-clock step). Nothing was
+ * written (the transaction rolled back), so the honest answer is "try again", not an unexplained 500.
+ * Only this one trigger message is recognised; every other check_violation stays a 500.
+ */
+export function isClockGuardViolation(error: unknown): boolean {
+  return (
+    pgCode(error) === PG_CHECK_VIOLATION &&
+    error instanceof Error &&
+    error.message === CLOCK_GUARD_MESSAGE
+  );
+}
+
 function replay(stored: idempotency.StoredResult, hash: string): PlaceBidResult {
   if (stored.requestHash !== hash) {
     throw new AppError(
@@ -156,6 +173,35 @@ export function createBidService(
     //    only; correctness does not depend on it (ADR-017).
     const early = await idempotency.findStored(db, userId, PLACE_BID_OPERATION, idempotencyKey);
     if (early) return replay(early, hash);
+
+    // 1b. ADR-073: refuse a bid that is ALREADY too low without taking the auction row lock.
+    //     Stale bids are most of the traffic on a hot auction, and each one used to queue on the
+    //     lock just to be told "too low". Safe because the minimum only ever rises: if the
+    //     unlocked read says the bid is below it, the locked path would say so too. Applied ONLY
+    //     when every check that comes before the price check in the locked path would pass, so
+    //     the error codes are unchanged. Anything else falls through to the locked path.
+    const peek = await repo.peekForBid(db, auctionId);
+    if (peek?.status === 'LIVE' && peek.started && peek.open && peek.seller_id !== userId) {
+      const minimum = minimumNextBid(peek);
+      if (minimum !== null && compareMoney(amount, minimum) < 0) {
+        // A retry whose first attempt committed between step 1 and the peek must get its stored
+        // answer, not a 409 (the commit that raised the price also stored the record).
+        const stored = await idempotency.findStored(
+          db,
+          userId,
+          PLACE_BID_OPERATION,
+          idempotencyKey,
+        );
+        if (stored) return replay(stored, hash);
+        throw new AppError(
+          409,
+          'BID_TOO_LOW',
+          'The bid is below the minimum acceptable amount',
+          undefined,
+          { currentPrice: peek.current_price, minimumAcceptableBid: minimum },
+        );
+      }
+    }
 
     try {
       return await withTransaction(db, async (client): Promise<PlaceBidResult> => {
@@ -353,6 +399,13 @@ export function createBidService(
           idempotencyKey,
         );
         if (stored) return replay(stored, hash);
+      }
+      if (isClockGuardViolation(error)) {
+        throw new AppError(
+          503,
+          'TEMPORARILY_UNAVAILABLE',
+          'The bid could not be recorded because of a clock inconsistency. Nothing was saved; retry with the same Idempotency-Key',
+        );
       }
       throw error;
     }

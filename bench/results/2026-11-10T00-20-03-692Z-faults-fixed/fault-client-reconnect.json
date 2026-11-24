@@ -1,0 +1,178 @@
+{
+  "scenario": "fault-client-reconnect",
+  "workload": {
+    "kind": "40 sockets with automatic reconnection on one auction; api1 killed at ~8 s, restarted 8 s later; bidding continues",
+    "clients": 40
+  },
+  "expectation": "Sockets on api1 lose their connection and reconnect (through NGINX, to api2 or api1 again), re-join, and receive a fresh snapshot. At the end every client knows the final event sequence.",
+  "measured": {
+    "clientsThatReconnected": 20,
+    "clientsNotOnFinalSequence": 0,
+    "finalEventSequence": 462,
+    "timeFromDisconnectToSnapshotMs": {
+      "count": 20,
+      "min": 55.18,
+      "mean": 74.96,
+      "p50": 73.05,
+      "p90": 90.14,
+      "p95": 92.61,
+      "p99": 94.53,
+      "max": 94.53
+    },
+    "acceptedBids": 462,
+    "bidsInDatabase": 462,
+    "perSecond": [
+      {
+        "second": 0,
+        "ok": 17,
+        "failed": 0
+      },
+      {
+        "second": 1,
+        "ok": 17,
+        "failed": 0
+      },
+      {
+        "second": 2,
+        "ok": 15,
+        "failed": 0
+      },
+      {
+        "second": 3,
+        "ok": 16,
+        "failed": 0
+      },
+      {
+        "second": 4,
+        "ok": 12,
+        "failed": 0
+      },
+      {
+        "second": 5,
+        "ok": 16,
+        "failed": 0
+      },
+      {
+        "second": 6,
+        "ok": 13,
+        "failed": 0
+      },
+      {
+        "second": 7,
+        "ok": 14,
+        "failed": 0
+      },
+      {
+        "second": 8,
+        "ok": 16,
+        "failed": 0
+      },
+      {
+        "second": 9,
+        "ok": 17,
+        "failed": 0
+      },
+      {
+        "second": 10,
+        "ok": 18,
+        "failed": 0
+      },
+      {
+        "second": 11,
+        "ok": 13,
+        "failed": 0
+      },
+      {
+        "second": 12,
+        "ok": 15,
+        "failed": 0
+      },
+      {
+        "second": 13,
+        "ok": 14,
+        "failed": 0
+      },
+      {
+        "second": 14,
+        "ok": 14,
+        "failed": 0
+      },
+      {
+        "second": 15,
+        "ok": 16,
+        "failed": 0
+      },
+      {
+        "second": 16,
+        "ok": 16,
+        "failed": 0
+      },
+      {
+        "second": 17,
+        "ok": 13,
+        "failed": 0
+      },
+      {
+        "second": 18,
+        "ok": 13,
+        "failed": 0
+      },
+      {
+        "second": 19,
+        "ok": 15,
+        "failed": 0
+      },
+      {
+        "second": 20,
+        "ok": 21,
+        "failed": 0
+      },
+      {
+        "second": 21,
+        "ok": 15,
+        "failed": 0
+      },
+      {
+        "second": 22,
+        "ok": 16,
+        "failed": 0
+      },
+      {
+        "second": 23,
+        "ok": 13,
+        "failed": 0
+      },
+      {
+        "second": 24,
+        "ok": 13,
+        "failed": 0
+      },
+      {
+        "second": 25,
+        "ok": 17,
+        "failed": 0
+      },
+      {
+        "second": 26,
+        "ok": 17,
+        "failed": 0
+      },
+      {
+        "second": 27,
+        "ok": 18,
+        "failed": 0
+      },
+      {
+        "second": 28,
+        "ok": 16,
+        "failed": 0
+      },
+      {
+        "second": 29,
+        "ok": 16,
+        "failed": 0
+      }
+    ]
+  },
+  "violations": []
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "scenario": "browse",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "hot-auction",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "many-auctions",
+    "run": 1,
+    "violations": 0
+  }
+]

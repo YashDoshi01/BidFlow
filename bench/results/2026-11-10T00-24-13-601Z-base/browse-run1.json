@@ -1,0 +1,27 @@
+{
+  "scenario": "browse-run1",
+  "workload": {
+    "kind": "read-only HTTP through NGINX",
+    "concurrentClients": 50,
+    "mix": "70% GET /auctions?limit=20, 30% GET /auctions/:id",
+    "seededAuctions": 200,
+    "seconds": 20
+  },
+  "measured": {
+    "requestsPerSecond": 1604.29,
+    "latencyMs": {
+      "count": 32121,
+      "min": 12.24,
+      "mean": 31.13,
+      "p50": 29.79,
+      "p90": 38.73,
+      "p95": 42.85,
+      "p99": 55.94,
+      "max": 246.69
+    },
+    "outcomes": {
+      "200": 32121
+    }
+  },
+  "violations": []
+}

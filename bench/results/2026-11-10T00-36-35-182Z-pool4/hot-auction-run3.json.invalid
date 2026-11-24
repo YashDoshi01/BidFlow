@@ -1,0 +1,8 @@
+{
+  "scenario": "hot-auction-run3",
+  "workload": {},
+  "measured": {},
+  "violations": [
+    "scenario crashed: connect ECONNREFUSED 127.0.0.1:57350"
+  ]
+}

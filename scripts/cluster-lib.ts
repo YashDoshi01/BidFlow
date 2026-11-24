@@ -16,7 +16,7 @@ export interface Cluster {
   compose: (...args: string[]) => Promise<{ stdout: string; stderr: string }>;
 }
 
-function composeRunner(project: string, env: Record<string, string>): Cluster['compose'] {
+export function composeRunner(project: string, env: Record<string, string>): Cluster['compose'] {
   return (...args) =>
     run('docker', ['compose', '-p', project, '-f', composeFile, ...args], {
       cwd: root,

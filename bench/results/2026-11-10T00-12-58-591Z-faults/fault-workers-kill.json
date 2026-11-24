@@ -1,0 +1,403 @@
+{
+  "scenario": "fault-workers-kill",
+  "workload": {
+    "kind": "bid load; worker1 killed at 8 s, then worker2 killed at 16 s (no publisher at all), both restarted at 24 s",
+    "bidders": 20,
+    "auctions": 5,
+    "seconds": 40,
+    "faultInjectedAtSecond": 8,
+    "clientBehaviour": "retries the same Idempotency-Key on network error or 5xx (up to 100 times, 150 ms apart)"
+  },
+  "expectation": "Killing one worker: the other takes over its leased rows after the lease (3 s here). Killing both: bids are still accepted, the backlog grows, and it drains after a worker returns. No event is lost or duplicated in the database.",
+  "measured": {
+    "acceptedBids": 5156,
+    "bidsInDatabase": 5156,
+    "outcomes": {
+      "201": 5156,
+      "409 BID_TOO_LOW": 21273
+    },
+    "requestsSlowerThan1sIncludingRetries": 0,
+    "slowestRequestMs": 80,
+    "perSecond": [
+      {
+        "second": 0,
+        "ok": 123,
+        "failed": 0
+      },
+      {
+        "second": 1,
+        "ok": 131,
+        "failed": 0
+      },
+      {
+        "second": 2,
+        "ok": 112,
+        "failed": 0
+      },
+      {
+        "second": 3,
+        "ok": 128,
+        "failed": 0
+      },
+      {
+        "second": 4,
+        "ok": 137,
+        "failed": 0
+      },
+      {
+        "second": 5,
+        "ok": 125,
+        "failed": 0
+      },
+      {
+        "second": 6,
+        "ok": 124,
+        "failed": 0
+      },
+      {
+        "second": 7,
+        "ok": 130,
+        "failed": 0
+      },
+      {
+        "second": 8,
+        "ok": 122,
+        "failed": 0
+      },
+      {
+        "second": 9,
+        "ok": 140,
+        "failed": 0
+      },
+      {
+        "second": 10,
+        "ok": 130,
+        "failed": 0
+      },
+      {
+        "second": 11,
+        "ok": 132,
+        "failed": 0
+      },
+      {
+        "second": 12,
+        "ok": 130,
+        "failed": 0
+      },
+      {
+        "second": 13,
+        "ok": 132,
+        "failed": 0
+      },
+      {
+        "second": 14,
+        "ok": 131,
+        "failed": 0
+      },
+      {
+        "second": 15,
+        "ok": 132,
+        "failed": 0
+      },
+      {
+        "second": 16,
+        "ok": 135,
+        "failed": 0
+      },
+      {
+        "second": 17,
+        "ok": 134,
+        "failed": 0
+      },
+      {
+        "second": 18,
+        "ok": 122,
+        "failed": 0
+      },
+      {
+        "second": 19,
+        "ok": 129,
+        "failed": 0
+      },
+      {
+        "second": 20,
+        "ok": 135,
+        "failed": 0
+      },
+      {
+        "second": 21,
+        "ok": 126,
+        "failed": 0
+      },
+      {
+        "second": 22,
+        "ok": 136,
+        "failed": 0
+      },
+      {
+        "second": 23,
+        "ok": 129,
+        "failed": 0
+      },
+      {
+        "second": 24,
+        "ok": 135,
+        "failed": 0
+      },
+      {
+        "second": 25,
+        "ok": 127,
+        "failed": 0
+      },
+      {
+        "second": 26,
+        "ok": 111,
+        "failed": 0
+      },
+      {
+        "second": 27,
+        "ok": 134,
+        "failed": 0
+      },
+      {
+        "second": 28,
+        "ok": 133,
+        "failed": 0
+      },
+      {
+        "second": 29,
+        "ok": 124,
+        "failed": 0
+      },
+      {
+        "second": 30,
+        "ok": 129,
+        "failed": 0
+      },
+      {
+        "second": 31,
+        "ok": 122,
+        "failed": 0
+      },
+      {
+        "second": 32,
+        "ok": 130,
+        "failed": 0
+      },
+      {
+        "second": 33,
+        "ok": 117,
+        "failed": 0
+      },
+      {
+        "second": 34,
+        "ok": 130,
+        "failed": 0
+      },
+      {
+        "second": 35,
+        "ok": 129,
+        "failed": 0
+      },
+      {
+        "second": 36,
+        "ok": 143,
+        "failed": 0
+      },
+      {
+        "second": 37,
+        "ok": 130,
+        "failed": 0
+      },
+      {
+        "second": 38,
+        "ok": 119,
+        "failed": 0
+      },
+      {
+        "second": 39,
+        "ok": 138,
+        "failed": 0
+      }
+    ],
+    "outboxBacklogTimeline": [
+      {
+        "t": 0.3,
+        "pending": 8
+      },
+      {
+        "t": 1.3,
+        "pending": 3
+      },
+      {
+        "t": 2.3,
+        "pending": 11
+      },
+      {
+        "t": 3.3,
+        "pending": 0
+      },
+      {
+        "t": 4.3,
+        "pending": 13
+      },
+      {
+        "t": 5.3,
+        "pending": 1
+      },
+      {
+        "t": 6.3,
+        "pending": 8
+      },
+      {
+        "t": 7.3,
+        "pending": 1
+      },
+      {
+        "t": 8.3,
+        "pending": 3
+      },
+      {
+        "t": 9.3,
+        "pending": 4
+      },
+      {
+        "t": 10.3,
+        "pending": 12
+      },
+      {
+        "t": 11.3,
+        "pending": 3
+      },
+      {
+        "t": 12.3,
+        "pending": 8
+      },
+      {
+        "t": 13.3,
+        "pending": 6
+      },
+      {
+        "t": 14.3,
+        "pending": 12
+      },
+      {
+        "t": 15.3,
+        "pending": 6
+      },
+      {
+        "t": 16.3,
+        "pending": 13
+      },
+      {
+        "t": 17.3,
+        "pending": 56
+      },
+      {
+        "t": 18.3,
+        "pending": 187
+      },
+      {
+        "t": 19.3,
+        "pending": 311
+      },
+      {
+        "t": 20.3,
+        "pending": 438
+      },
+      {
+        "t": 21.3,
+        "pending": 573
+      },
+      {
+        "t": 22.3,
+        "pending": 706
+      },
+      {
+        "t": 23.3,
+        "pending": 840
+      },
+      {
+        "t": 24.3,
+        "pending": 971
+      },
+      {
+        "t": 25.3,
+        "pending": 1098
+      },
+      {
+        "t": 26.3,
+        "pending": 1217
+      },
+      {
+        "t": 27.4,
+        "pending": 1204
+      },
+      {
+        "t": 28.4,
+        "pending": 929
+      },
+      {
+        "t": 29.4,
+        "pending": 621
+      },
+      {
+        "t": 30.4,
+        "pending": 189
+      },
+      {
+        "t": 31.4,
+        "pending": 10
+      },
+      {
+        "t": 32.4,
+        "pending": 6
+      },
+      {
+        "t": 33.4,
+        "pending": 3
+      },
+      {
+        "t": 34.4,
+        "pending": 7
+      },
+      {
+        "t": 35.4,
+        "pending": 0
+      },
+      {
+        "t": 36.4,
+        "pending": 8
+      },
+      {
+        "t": 37.4,
+        "pending": 5
+      },
+      {
+        "t": 38.4,
+        "pending": 7
+      },
+      {
+        "t": 39.4,
+        "pending": 1
+      }
+    ],
+    "msFromEndOfLoadUntilEveryEventPublished": 15,
+    "outboxPublicationDelayMs": {
+      "count": 5156,
+      "min": 5.31,
+      "mean": 1847.62,
+      "p50": 71.73,
+      "p90": 7431.74,
+      "p95": 8732.85,
+      "p99": 9774.18,
+      "max": 9975.46
+    }
+  },
+  "violations": [],
+  "notes": [
+    "worker1 killed",
+    "worker2 killed",
+    "workers restarted"
+  ]
+}

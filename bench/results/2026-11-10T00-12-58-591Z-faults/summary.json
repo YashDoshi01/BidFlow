@@ -1,0 +1,32 @@
+[
+  {
+    "scenario": "fanout",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "fault-api-kill",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "fault-postgres-stop",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "fault-redis-stop",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "fault-workers-kill",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "fault-client-reconnect",
+    "run": 1,
+    "violations": 0
+  }
+]

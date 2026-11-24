@@ -1,0 +1,357 @@
+{
+  "scenario": "fault-redis-stop",
+  "workload": {
+    "kind": "bid load while Redis is stopped for 10 s",
+    "bidders": 20,
+    "auctions": 5,
+    "seconds": 35,
+    "faultInjectedAtSecond": 8,
+    "clientBehaviour": "retries the same Idempotency-Key on network error or 5xx (up to 100 times, 150 ms apart)"
+  },
+  "expectation": "Bids are still accepted (the limiter is off here; with it on it falls back per process, tested in tests/cluster/06). Events stay pending in the outbox while Redis is down; after it returns, every event is published, ordered per auction.",
+  "measured": {
+    "acceptedBids": 4151,
+    "bidsInDatabase": 4151,
+    "outcomes": {
+      "201": 4151,
+      "409 BID_TOO_LOW": 17539
+    },
+    "requestsSlowerThan1sIncludingRetries": 0,
+    "slowestRequestMs": 171,
+    "perSecond": [
+      {
+        "second": 0,
+        "ok": 74,
+        "failed": 0
+      },
+      {
+        "second": 1,
+        "ok": 116,
+        "failed": 0
+      },
+      {
+        "second": 2,
+        "ok": 110,
+        "failed": 0
+      },
+      {
+        "second": 3,
+        "ok": 125,
+        "failed": 0
+      },
+      {
+        "second": 4,
+        "ok": 128,
+        "failed": 0
+      },
+      {
+        "second": 5,
+        "ok": 127,
+        "failed": 0
+      },
+      {
+        "second": 6,
+        "ok": 109,
+        "failed": 0
+      },
+      {
+        "second": 7,
+        "ok": 114,
+        "failed": 0
+      },
+      {
+        "second": 8,
+        "ok": 115,
+        "failed": 0
+      },
+      {
+        "second": 9,
+        "ok": 119,
+        "failed": 0
+      },
+      {
+        "second": 10,
+        "ok": 104,
+        "failed": 0
+      },
+      {
+        "second": 11,
+        "ok": 112,
+        "failed": 0
+      },
+      {
+        "second": 12,
+        "ok": 114,
+        "failed": 0
+      },
+      {
+        "second": 13,
+        "ok": 115,
+        "failed": 0
+      },
+      {
+        "second": 14,
+        "ok": 127,
+        "failed": 0
+      },
+      {
+        "second": 15,
+        "ok": 117,
+        "failed": 0
+      },
+      {
+        "second": 16,
+        "ok": 113,
+        "failed": 0
+      },
+      {
+        "second": 17,
+        "ok": 121,
+        "failed": 0
+      },
+      {
+        "second": 18,
+        "ok": 120,
+        "failed": 0
+      },
+      {
+        "second": 19,
+        "ok": 122,
+        "failed": 0
+      },
+      {
+        "second": 20,
+        "ok": 117,
+        "failed": 0
+      },
+      {
+        "second": 21,
+        "ok": 123,
+        "failed": 0
+      },
+      {
+        "second": 22,
+        "ok": 123,
+        "failed": 0
+      },
+      {
+        "second": 23,
+        "ok": 123,
+        "failed": 0
+      },
+      {
+        "second": 24,
+        "ok": 126,
+        "failed": 0
+      },
+      {
+        "second": 25,
+        "ok": 130,
+        "failed": 0
+      },
+      {
+        "second": 26,
+        "ok": 122,
+        "failed": 0
+      },
+      {
+        "second": 27,
+        "ok": 121,
+        "failed": 0
+      },
+      {
+        "second": 28,
+        "ok": 117,
+        "failed": 0
+      },
+      {
+        "second": 29,
+        "ok": 134,
+        "failed": 0
+      },
+      {
+        "second": 30,
+        "ok": 129,
+        "failed": 0
+      },
+      {
+        "second": 31,
+        "ok": 119,
+        "failed": 0
+      },
+      {
+        "second": 32,
+        "ok": 128,
+        "failed": 0
+      },
+      {
+        "second": 33,
+        "ok": 121,
+        "failed": 0
+      },
+      {
+        "second": 34,
+        "ok": 116,
+        "failed": 0
+      }
+    ],
+    "outboxBacklogTimeline": [
+      {
+        "t": 0.3,
+        "pending": 3
+      },
+      {
+        "t": 1.3,
+        "pending": 1
+      },
+      {
+        "t": 2.3,
+        "pending": 7
+      },
+      {
+        "t": 3.3,
+        "pending": 4
+      },
+      {
+        "t": 4.3,
+        "pending": 1
+      },
+      {
+        "t": 5.3,
+        "pending": 9
+      },
+      {
+        "t": 6.3,
+        "pending": 3
+      },
+      {
+        "t": 7.3,
+        "pending": 9
+      },
+      {
+        "t": 8.3,
+        "pending": 0
+      },
+      {
+        "t": 9.3,
+        "pending": 77
+      },
+      {
+        "t": 10.3,
+        "pending": 197
+      },
+      {
+        "t": 11.3,
+        "pending": 301
+      },
+      {
+        "t": 12.3,
+        "pending": 418
+      },
+      {
+        "t": 13.3,
+        "pending": 526
+      },
+      {
+        "t": 14.3,
+        "pending": 646
+      },
+      {
+        "t": 15.3,
+        "pending": 771
+      },
+      {
+        "t": 16.3,
+        "pending": 887
+      },
+      {
+        "t": 17.3,
+        "pending": 999
+      },
+      {
+        "t": 18.3,
+        "pending": 1121
+      },
+      {
+        "t": 19.3,
+        "pending": 1251
+      },
+      {
+        "t": 20.3,
+        "pending": 1372
+      },
+      {
+        "t": 21.4,
+        "pending": 1486
+      },
+      {
+        "t": 22.4,
+        "pending": 1609
+      },
+      {
+        "t": 23.4,
+        "pending": 1732
+      },
+      {
+        "t": 24.4,
+        "pending": 1774
+      },
+      {
+        "t": 25.4,
+        "pending": 1630
+      },
+      {
+        "t": 26.4,
+        "pending": 1465
+      },
+      {
+        "t": 27.4,
+        "pending": 1229
+      },
+      {
+        "t": 28.4,
+        "pending": 940
+      },
+      {
+        "t": 29.4,
+        "pending": 558
+      },
+      {
+        "t": 30.4,
+        "pending": 170
+      },
+      {
+        "t": 31.4,
+        "pending": 35
+      },
+      {
+        "t": 32.4,
+        "pending": 4
+      },
+      {
+        "t": 33.4,
+        "pending": 5
+      },
+      {
+        "t": 34.4,
+        "pending": 0
+      }
+    ],
+    "msFromEndOfLoadUntilEveryEventPublished": 16,
+    "outboxPublicationDelayMs": {
+      "count": 4151,
+      "min": 5.5,
+      "mean": 5140.42,
+      "p50": 3480.55,
+      "p90": 13470.29,
+      "p95": 14778.99,
+      "p99": 17331.15,
+      "max": 18409.15
+    }
+  },
+  "violations": [],
+  "notes": [
+    "redis stopped",
+    "redis healthy again"
+  ]
+}

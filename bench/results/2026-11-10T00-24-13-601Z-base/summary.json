@@ -1,0 +1,62 @@
+[
+  {
+    "scenario": "browse-run1",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "hot-auction-run1",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "many-auctions-run1",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "hot-auction-limiter-on-run1",
+    "run": 1,
+    "violations": 0
+  },
+  {
+    "scenario": "browse-run2",
+    "run": 2,
+    "violations": 0
+  },
+  {
+    "scenario": "hot-auction-run2",
+    "run": 2,
+    "violations": 0
+  },
+  {
+    "scenario": "many-auctions-run2",
+    "run": 2,
+    "violations": 0
+  },
+  {
+    "scenario": "hot-auction-limiter-on-run2",
+    "run": 2,
+    "violations": 0
+  },
+  {
+    "scenario": "browse-run3",
+    "run": 3,
+    "violations": 0
+  },
+  {
+    "scenario": "hot-auction-run3",
+    "run": 3,
+    "violations": 0
+  },
+  {
+    "scenario": "many-auctions-run3",
+    "run": 3,
+    "violations": 0
+  },
+  {
+    "scenario": "hot-auction-limiter-on-run3",
+    "run": 3,
+    "violations": 0
+  }
+]

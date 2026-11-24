@@ -1,0 +1,165 @@
+{
+  "scenario": "many-auctions-run3",
+  "workload": {
+    "kind": "the same bidders spread over 100 auctions",
+    "concurrentBidders": 50,
+    "auctions": 100,
+    "bidding": "closed loop: next bid is sent when the previous answer arrives; each bidder bids the minimum it believes is acceptable plus 0-2 increments; it learns the real minimum from the answer",
+    "seconds": 20,
+    "seed": "rng(1000 + bidderIndex); users and tokens derived from the tag"
+  },
+  "measured": {
+    "requestsPerSecond": 1018.02,
+    "acceptedPerSecond": 150.52,
+    "outcomes": {
+      "201": 3016,
+      "409 BID_TOO_LOW": 17382
+    },
+    "latencyAllMs": {
+      "count": 20398,
+      "min": 24.26,
+      "mean": 49.05,
+      "p50": 45.36,
+      "p90": 65.24,
+      "p95": 72.64,
+      "p99": 90.89,
+      "max": 180.3
+    },
+    "latencyAcceptedMs": {
+      "count": 3016,
+      "min": 40.21,
+      "mean": 67.33,
+      "p50": 65.04,
+      "p90": 83.17,
+      "p95": 90.85,
+      "p99": 121.03,
+      "max": 180.3
+    },
+    "latencyRejectedMs": {
+      "count": 17382,
+      "min": 24.26,
+      "mean": 45.88,
+      "p50": 43.87,
+      "p90": 56.09,
+      "p95": 61.35,
+      "p99": 77.13,
+      "max": 150.1
+    },
+    "bidsInDatabase": 3016,
+    "sessionsWaitingOnLockAtTheEnd": 0,
+    "sampled": {
+      "pgSamples": 79,
+      "backendSessionSamples": 2567,
+      "backendsByStateAndWait": {
+        "Client:ClientRead idle": 17.84,
+        "Client:ClientRead idle in transaction": 9.61,
+        "none:- active": 1.92,
+        "none:- idle in transaction": 0.82,
+        "Lock:transactionid active": 0.67,
+        "Client:ClientRead active": 0.53,
+        "none:- idle": 0.38,
+        "IO:WalSync active": 0.34,
+        "LWLock:WALWrite active": 0.32,
+        "Lock:tuple active": 0.04,
+        "LWLock:WALWrite idle in transaction": 0.01,
+        "IO:WalWrite active": 0.01
+      },
+      "note": "backendsByStateAndWait = average number of backend sessions in that state per sample; containerCpuPercent: 100 = one full core",
+      "containerCpuPercent": {
+        "api2": {
+          "samples": 10,
+          "mean": 97.5,
+          "max": 112.66
+        },
+        "api1": {
+          "samples": 10,
+          "mean": 93.5,
+          "max": 104.11
+        },
+        "nginx": {
+          "samples": 10,
+          "mean": 26.7,
+          "max": 33.22
+        },
+        "worker2": {
+          "samples": 10,
+          "mean": 4.7,
+          "max": 10.27
+        },
+        "scheduler2": {
+          "samples": 10,
+          "mean": 0.3,
+          "max": 0.57
+        },
+        "scheduler1": {
+          "samples": 10,
+          "mean": 0.4,
+          "max": 0.92
+        },
+        "worker1": {
+          "samples": 10,
+          "mean": 4.8,
+          "max": 6.18
+        },
+        "postgres": {
+          "samples": 10,
+          "mean": 304.2,
+          "max": 396.3
+        },
+        "redis": {
+          "samples": 10,
+          "mean": 6.3,
+          "max": 7.66
+        }
+      },
+      "containerMemMiB": {
+        "api2": {
+          "samples": 10,
+          "mean": 90.6,
+          "max": 105
+        },
+        "api1": {
+          "samples": 10,
+          "mean": 179.9,
+          "max": 181.9
+        },
+        "nginx": {
+          "samples": 10,
+          "mean": 15.3,
+          "max": 16.02
+        },
+        "worker2": {
+          "samples": 10,
+          "mean": 53,
+          "max": 55.59
+        },
+        "scheduler2": {
+          "samples": 10,
+          "mean": 37.9,
+          "max": 38.26
+        },
+        "scheduler1": {
+          "samples": 10,
+          "mean": 38.1,
+          "max": 38.6
+        },
+        "worker1": {
+          "samples": 10,
+          "mean": 53.6,
+          "max": 56.38
+        },
+        "postgres": {
+          "samples": 10,
+          "mean": 170.1,
+          "max": 172.3
+        },
+        "redis": {
+          "samples": 10,
+          "mean": 4.3,
+          "max": 4.859
+        }
+      }
+    }
+  },
+  "violations": []
+}

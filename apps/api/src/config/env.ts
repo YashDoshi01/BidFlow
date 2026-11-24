@@ -38,6 +38,8 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
+  // PostgreSQL connections held by ONE API process (default 10). Phase 9 measures what changes when it does.
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(200).default(10),
   RATE_LIMIT_BID_USER_MAX: z.coerce.number().int().min(1).max(100_000).default(20),
   RATE_LIMIT_BID_AUCTION_MAX: z.coerce.number().int().min(1).max(1_000_000).default(300),
   RATE_LIMIT_LOGIN_IP_MAX: z.coerce.number().int().min(1).max(100_000).default(30),

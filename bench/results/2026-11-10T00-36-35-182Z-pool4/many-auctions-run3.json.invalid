@@ -1,0 +1,8 @@
+{
+  "scenario": "many-auctions-run3",
+  "workload": {},
+  "measured": {},
+  "violations": [
+    "scenario crashed: Command failed: docker compose -p bidflow-load -f E:\\bidflow\\BidFlow\\infra\\compose.cluster.yaml port postgres 5432\n"
+  ]
+}

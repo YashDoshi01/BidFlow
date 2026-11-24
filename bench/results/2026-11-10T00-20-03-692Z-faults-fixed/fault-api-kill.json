@@ -1,0 +1,315 @@
+{
+  "scenario": "fault-api-kill",
+  "workload": {
+    "kind": "bid load while api1 is killed (docker kill, no graceful shutdown), restarted 8 s later",
+    "bidders": 20,
+    "auctions": 5,
+    "seconds": 30,
+    "faultInjectedAtSecond": 8,
+    "clientBehaviour": "retries the same Idempotency-Key on network error or 5xx (up to 100 times, 150 ms apart)"
+  },
+  "expectation": "Requests in flight on api1 fail; clients retry the same key and are served by api2 (NGINX marks api1 failed). No accepted bid is lost, none is duplicated, sequences stay gapless.",
+  "measured": {
+    "acceptedBids": 3495,
+    "bidsInDatabase": 3495,
+    "outcomes": {
+      "201": 3495,
+      "409 BID_TOO_LOW": 14443
+    },
+    "requestsSlowerThan1sIncludingRetries": 1,
+    "requestsThatNeededARetry": 4,
+    "totalRetryAttempts": 4,
+    "requestsThatGaveUp": 0,
+    "slowestRequestMs": 3016,
+    "perSecond": [
+      {
+        "second": 0,
+        "ok": 85,
+        "failed": 0
+      },
+      {
+        "second": 1,
+        "ok": 115,
+        "failed": 0
+      },
+      {
+        "second": 2,
+        "ok": 124,
+        "failed": 0
+      },
+      {
+        "second": 3,
+        "ok": 124,
+        "failed": 0
+      },
+      {
+        "second": 4,
+        "ok": 123,
+        "failed": 0
+      },
+      {
+        "second": 5,
+        "ok": 112,
+        "failed": 0
+      },
+      {
+        "second": 6,
+        "ok": 124,
+        "failed": 0
+      },
+      {
+        "second": 7,
+        "ok": 125,
+        "failed": 0
+      },
+      {
+        "second": 8,
+        "ok": 119,
+        "failed": 0
+      },
+      {
+        "second": 9,
+        "ok": 117,
+        "failed": 0
+      },
+      {
+        "second": 10,
+        "ok": 109,
+        "failed": 0
+      },
+      {
+        "second": 11,
+        "ok": 117,
+        "failed": 0
+      },
+      {
+        "second": 12,
+        "ok": 120,
+        "failed": 0
+      },
+      {
+        "second": 13,
+        "ok": 114,
+        "failed": 0
+      },
+      {
+        "second": 14,
+        "ok": 112,
+        "failed": 0
+      },
+      {
+        "second": 15,
+        "ok": 107,
+        "failed": 0
+      },
+      {
+        "second": 16,
+        "ok": 122,
+        "failed": 0
+      },
+      {
+        "second": 17,
+        "ok": 109,
+        "failed": 0
+      },
+      {
+        "second": 18,
+        "ok": 99,
+        "failed": 0
+      },
+      {
+        "second": 19,
+        "ok": 117,
+        "failed": 0
+      },
+      {
+        "second": 20,
+        "ok": 111,
+        "failed": 0
+      },
+      {
+        "second": 21,
+        "ok": 117,
+        "failed": 0
+      },
+      {
+        "second": 22,
+        "ok": 107,
+        "failed": 0
+      },
+      {
+        "second": 23,
+        "ok": 109,
+        "failed": 0
+      },
+      {
+        "second": 24,
+        "ok": 132,
+        "failed": 0
+      },
+      {
+        "second": 25,
+        "ok": 117,
+        "failed": 0
+      },
+      {
+        "second": 26,
+        "ok": 121,
+        "failed": 0
+      },
+      {
+        "second": 27,
+        "ok": 124,
+        "failed": 0
+      },
+      {
+        "second": 28,
+        "ok": 134,
+        "failed": 0
+      },
+      {
+        "second": 29,
+        "ok": 129,
+        "failed": 0
+      }
+    ],
+    "outboxBacklogTimeline": [
+      {
+        "t": 0.4,
+        "pending": 0
+      },
+      {
+        "t": 1.4,
+        "pending": 5
+      },
+      {
+        "t": 2.4,
+        "pending": 0
+      },
+      {
+        "t": 3.4,
+        "pending": 3
+      },
+      {
+        "t": 4.4,
+        "pending": 7
+      },
+      {
+        "t": 5.4,
+        "pending": 0
+      },
+      {
+        "t": 6.4,
+        "pending": 8
+      },
+      {
+        "t": 7.4,
+        "pending": 1
+      },
+      {
+        "t": 8.4,
+        "pending": 8
+      },
+      {
+        "t": 9.4,
+        "pending": 0
+      },
+      {
+        "t": 10.4,
+        "pending": 6
+      },
+      {
+        "t": 11.4,
+        "pending": 0
+      },
+      {
+        "t": 12.4,
+        "pending": 0
+      },
+      {
+        "t": 13.4,
+        "pending": 11
+      },
+      {
+        "t": 14.4,
+        "pending": 6
+      },
+      {
+        "t": 15.4,
+        "pending": 4
+      },
+      {
+        "t": 16.4,
+        "pending": 7
+      },
+      {
+        "t": 17.4,
+        "pending": 9
+      },
+      {
+        "t": 18.4,
+        "pending": 2
+      },
+      {
+        "t": 19.4,
+        "pending": 8
+      },
+      {
+        "t": 20.4,
+        "pending": 2
+      },
+      {
+        "t": 21.4,
+        "pending": 0
+      },
+      {
+        "t": 22.4,
+        "pending": 7
+      },
+      {
+        "t": 23.4,
+        "pending": 5
+      },
+      {
+        "t": 24.4,
+        "pending": 12
+      },
+      {
+        "t": 25.4,
+        "pending": 5
+      },
+      {
+        "t": 26.4,
+        "pending": 1
+      },
+      {
+        "t": 27.4,
+        "pending": 11
+      },
+      {
+        "t": 28.4,
+        "pending": 11
+      },
+      {
+        "t": 29.4,
+        "pending": 7
+      }
+    ],
+    "msFromEndOfLoadUntilEveryEventPublished": 15,
+    "outboxPublicationDelayMs": {
+      "count": 3495,
+      "min": 5.61,
+      "mean": 45.83,
+      "p50": 43.28,
+      "p90": 86.75,
+      "p95": 94.7,
+      "p99": 102.96,
+      "max": 111.78
+    }
+  },
+  "violations": [],
+  "notes": [
+    "api1 killed",
+    "api1 healthy again"
+  ]
+}

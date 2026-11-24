@@ -1,0 +1,276 @@
+{
+  "scenario": "fault-postgres-stop",
+  "workload": {
+    "kind": "bid load while PostgreSQL is stopped for 6 s",
+    "bidders": 20,
+    "auctions": 5,
+    "seconds": 30,
+    "faultInjectedAtSecond": 8,
+    "clientBehaviour": "retries the same Idempotency-Key on network error or 5xx (up to 100 times, 150 ms apart)"
+  },
+  "expectation": "Bids cannot be accepted while the database is down (5xx); clients retry the same key; after it returns, the invariants hold and nothing is duplicated. The outbox backlog cannot be read while it is down.",
+  "measured": {
+    "acceptedBids": 2723,
+    "bidsInDatabase": 2723,
+    "outcomes": {
+      "201": 2723,
+      "409 BID_TOO_LOW": 11385
+    },
+    "requestsSlowerThan1sIncludingRetries": 20,
+    "requestsThatNeededARetry": 20,
+    "totalRetryAttempts": 61,
+    "requestsThatGaveUp": 0,
+    "slowestRequestMs": 7612,
+    "perSecond": [
+      {
+        "second": 0,
+        "ok": 121,
+        "failed": 0
+      },
+      {
+        "second": 1,
+        "ok": 130,
+        "failed": 0
+      },
+      {
+        "second": 2,
+        "ok": 121,
+        "failed": 0
+      },
+      {
+        "second": 3,
+        "ok": 129,
+        "failed": 0
+      },
+      {
+        "second": 4,
+        "ok": 125,
+        "failed": 0
+      },
+      {
+        "second": 5,
+        "ok": 120,
+        "failed": 0
+      },
+      {
+        "second": 6,
+        "ok": 126,
+        "failed": 0
+      },
+      {
+        "second": 7,
+        "ok": 110,
+        "failed": 0
+      },
+      {
+        "second": 8,
+        "ok": 58,
+        "failed": 0
+      },
+      {
+        "second": 16,
+        "ok": 55,
+        "failed": 0
+      },
+      {
+        "second": 17,
+        "ok": 112,
+        "failed": 0
+      },
+      {
+        "second": 18,
+        "ok": 127,
+        "failed": 0
+      },
+      {
+        "second": 19,
+        "ok": 125,
+        "failed": 0
+      },
+      {
+        "second": 20,
+        "ok": 125,
+        "failed": 0
+      },
+      {
+        "second": 21,
+        "ok": 133,
+        "failed": 0
+      },
+      {
+        "second": 22,
+        "ok": 127,
+        "failed": 0
+      },
+      {
+        "second": 23,
+        "ok": 136,
+        "failed": 0
+      },
+      {
+        "second": 24,
+        "ok": 127,
+        "failed": 0
+      },
+      {
+        "second": 25,
+        "ok": 123,
+        "failed": 0
+      },
+      {
+        "second": 26,
+        "ok": 120,
+        "failed": 0
+      },
+      {
+        "second": 27,
+        "ok": 113,
+        "failed": 0
+      },
+      {
+        "second": 28,
+        "ok": 128,
+        "failed": 0
+      },
+      {
+        "second": 29,
+        "ok": 132,
+        "failed": 0
+      }
+    ],
+    "outboxBacklogTimeline": [
+      {
+        "t": 0.3,
+        "pending": 5
+      },
+      {
+        "t": 1.3,
+        "pending": 3
+      },
+      {
+        "t": 2.3,
+        "pending": 1
+      },
+      {
+        "t": 3.3,
+        "pending": 6
+      },
+      {
+        "t": 4.3,
+        "pending": 6
+      },
+      {
+        "t": 5.3,
+        "pending": 2
+      },
+      {
+        "t": 6.3,
+        "pending": 6
+      },
+      {
+        "t": 7.3,
+        "pending": 8
+      },
+      {
+        "t": 8.3,
+        "pending": 2
+      },
+      {
+        "t": 9.3,
+        "pending": -1
+      },
+      {
+        "t": 10.5,
+        "pending": -1
+      },
+      {
+        "t": 11.6,
+        "pending": -1
+      },
+      {
+        "t": 12.8,
+        "pending": -1
+      },
+      {
+        "t": 13.9,
+        "pending": -1
+      },
+      {
+        "t": 15,
+        "pending": -1
+      },
+      {
+        "t": 16.2,
+        "pending": 3
+      },
+      {
+        "t": 17.2,
+        "pending": 34
+      },
+      {
+        "t": 18.2,
+        "pending": 6
+      },
+      {
+        "t": 19.2,
+        "pending": 2
+      },
+      {
+        "t": 20.2,
+        "pending": 3
+      },
+      {
+        "t": 21.2,
+        "pending": 2
+      },
+      {
+        "t": 22.2,
+        "pending": 4
+      },
+      {
+        "t": 23.2,
+        "pending": 8
+      },
+      {
+        "t": 24.2,
+        "pending": 5
+      },
+      {
+        "t": 25.2,
+        "pending": 9
+      },
+      {
+        "t": 26.3,
+        "pending": 3
+      },
+      {
+        "t": 27.3,
+        "pending": 10
+      },
+      {
+        "t": 28.3,
+        "pending": 1
+      },
+      {
+        "t": 29.3,
+        "pending": 11
+      }
+    ],
+    "msFromEndOfLoadUntilEveryEventPublished": 15,
+    "outboxPublicationDelayMs": {
+      "count": 2723,
+      "min": 5.33,
+      "mean": 61.59,
+      "p50": 42.3,
+      "p90": 87.33,
+      "p95": 98.42,
+      "p99": 426.66,
+      "max": 8584.38
+    }
+  },
+  "violations": [],
+  "notes": [
+    "postgres stopped",
+    "postgres healthy again"
+  ]
+}

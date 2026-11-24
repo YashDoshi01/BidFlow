@@ -12,7 +12,7 @@ function main(): void {
   // Every log line carries the instance id, so a request or a socket can be followed to the
   // process that handled it.
   const logger = createLogger(env.LOG_LEVEL, undefined, { instance: instanceId });
-  const db = createPool(env.DATABASE_URL);
+  const db = createPool(env.DATABASE_URL, env.DB_POOL_MAX);
   const redis = createRedisPair(env.REDIS_URL, logger);
   const { server, shutdown } = createRunningServer({
     db,

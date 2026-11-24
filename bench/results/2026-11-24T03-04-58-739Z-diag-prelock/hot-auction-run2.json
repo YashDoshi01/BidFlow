@@ -1,0 +1,162 @@
+{
+  "scenario": "hot-auction-run2",
+  "workload": {
+    "kind": "many bidders on ONE auction (row-lock contention)",
+    "concurrentBidders": 50,
+    "auctions": 1,
+    "bidding": "closed loop: next bid is sent when the previous answer arrives; each bidder bids the minimum it believes is acceptable plus 0-2 increments; it learns the real minimum from the answer",
+    "seconds": 20,
+    "seed": "rng(1000 + bidderIndex); users and tokens derived from the tag"
+  },
+  "measured": {
+    "requestsPerSecond": 787.44,
+    "acceptedPerSecond": 34.15,
+    "outcomes": {
+      "201": 685,
+      "409 BID_TOO_LOW": 15111
+    },
+    "latencyAllMs": {
+      "count": 15796,
+      "min": 15.81,
+      "mean": 63.38,
+      "p50": 60.25,
+      "p90": 95.5,
+      "p95": 104.13,
+      "p99": 118.8,
+      "max": 166.26
+    },
+    "latencyAcceptedMs": {
+      "count": 685,
+      "min": 22.07,
+      "mean": 54.81,
+      "p50": 56.96,
+      "p90": 77.63,
+      "p95": 82.88,
+      "p99": 94.03,
+      "max": 105.78
+    },
+    "latencyRejectedMs": {
+      "count": 15111,
+      "min": 15.81,
+      "mean": 63.76,
+      "p50": 60.48,
+      "p90": 96.03,
+      "p95": 104.65,
+      "p99": 119.01,
+      "max": 166.26
+    },
+    "bidsInDatabase": 685,
+    "sessionsWaitingOnLockAtTheEnd": 0,
+    "sampled": {
+      "pgSamples": 79,
+      "backendSessionSamples": 2567,
+      "backendsByStateAndWait": {
+        "Lock:tuple active": 15.86,
+        "Client:ClientRead idle": 13.54,
+        "Lock:transactionid active": 1.01,
+        "none:- active": 0.82,
+        "Client:ClientRead idle in transaction": 0.41,
+        "Client:ClientRead active": 0.32,
+        "none:- idle": 0.27,
+        "none:- idle in transaction": 0.19,
+        "IO:WalSync active": 0.08
+      },
+      "note": "backendsByStateAndWait = average number of backend sessions in that state per sample; containerCpuPercent: 100 = one full core",
+      "containerCpuPercent": {
+        "api1": {
+          "samples": 10,
+          "mean": 57.9,
+          "max": 65.06
+        },
+        "api2": {
+          "samples": 10,
+          "mean": 57.5,
+          "max": 64.95
+        },
+        "nginx": {
+          "samples": 10,
+          "mean": 18.3,
+          "max": 22.86
+        },
+        "worker1": {
+          "samples": 10,
+          "mean": 2.1,
+          "max": 2.97
+        },
+        "scheduler2": {
+          "samples": 10,
+          "mean": 0.3,
+          "max": 0.7
+        },
+        "worker2": {
+          "samples": 10,
+          "mean": 2.3,
+          "max": 3.3
+        },
+        "scheduler1": {
+          "samples": 10,
+          "mean": 0.3,
+          "max": 0.47
+        },
+        "postgres": {
+          "samples": 10,
+          "mean": 132.1,
+          "max": 146.69
+        },
+        "redis": {
+          "samples": 10,
+          "mean": 4.5,
+          "max": 5.09
+        }
+      },
+      "containerMemMiB": {
+        "api1": {
+          "samples": 10,
+          "mean": 153.5,
+          "max": 174.2
+        },
+        "api2": {
+          "samples": 10,
+          "mean": 164.4,
+          "max": 175.8
+        },
+        "nginx": {
+          "samples": 10,
+          "mean": 14,
+          "max": 14.63
+        },
+        "worker1": {
+          "samples": 10,
+          "mean": 52.8,
+          "max": 53.71
+        },
+        "scheduler2": {
+          "samples": 10,
+          "mean": 57.5,
+          "max": 58.73
+        },
+        "worker2": {
+          "samples": 10,
+          "mean": 53.5,
+          "max": 54.73
+        },
+        "scheduler1": {
+          "samples": 10,
+          "mean": 56.1,
+          "max": 57.18
+        },
+        "postgres": {
+          "samples": 10,
+          "mean": 154.3,
+          "max": 159.1
+        },
+        "redis": {
+          "samples": 10,
+          "mean": 4.5,
+          "max": 4.848
+        }
+      }
+    }
+  },
+  "violations": []
+}

@@ -11,6 +11,14 @@ export function createPool(connectionString: string, max = 10): Db {
   });
   // An idle client can error (server restart). Without a handler the process crashes.
   pool.on('error', () => undefined);
+  // The handler above covers only IDLE clients. A client that is checked out (inside a transaction)
+  // when PostgreSQL stops or the backend is terminated emits 'error' on the Client itself; with no
+  // listener Node treats that as an uncaught exception and the whole process exits. Found by the
+  // Phase 9 load test (both API containers exited when PostgreSQL was stopped under load, docs/BUGS_FOUND.md).
+  // The query that was running still rejects, so the request fails cleanly (and the client retries).
+  pool.on('connect', (client) => {
+    client.on('error', () => undefined);
+  });
   return pool;
 }
 

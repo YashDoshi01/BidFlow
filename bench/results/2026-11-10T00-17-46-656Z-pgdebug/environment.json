@@ -1,0 +1,35 @@
+{
+  "when": "2026-11-10T00:17:59.832Z",
+  "gitCommit": "3f0638fd2bc8148355e0a6d4723da9f02cc5cef3",
+  "gitWorkingTreeDirty": true,
+  "node": "v24.14.1",
+  "hostOs": "Windows_NT 10.0.26200 x64",
+  "hostCpu": "AMD Ryzen 5 5600H with Radeon Graphics         ",
+  "hostLogicalCpus": 12,
+  "hostMemoryGB": 15,
+  "docker": {
+    "server": "29.9.2",
+    "cpus": 12,
+    "memBytes": 7978405888,
+    "os": "Docker Desktop",
+    "kernel": "6.18.54.1-microsoft-standard-WSL2"
+  },
+  "images": {
+    "postgres": "postgres:17-alpine",
+    "redis": "redis:7-alpine",
+    "nginx": "nginx:1.28-alpine",
+    "api": "built from this repository (infra/docker/api.Dockerfile)"
+  },
+  "topology": "load generator (this process, on the host) -> NGINX -> api1, api2 -> PostgreSQL, Redis; worker1/2 (outbox), scheduler1/2 (lifecycle). No CPU or memory limits on any container.",
+  "run": {
+    "seconds": 15,
+    "concurrency": 50,
+    "tag": "pgdebug",
+    "repeat": 1,
+    "scenarios": [
+      "fault-postgres-stop"
+    ],
+    "extraEnv": {}
+  },
+  "note": "The load generator shares the machine with the cluster: results are for THIS machine and workload only."
+}

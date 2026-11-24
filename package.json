@@ -33,7 +33,9 @@
     "start:worker": "node --env-file-if-exists=.env apps/workers/src/outboxWorker.ts",
     "dev:lifecycle": "node --watch --env-file-if-exists=.env apps/workers/src/lifecycleWorker.ts",
     "start:lifecycle": "node --env-file-if-exists=.env apps/workers/src/lifecycleWorker.ts",
-    "outbox": "node --env-file-if-exists=.env scripts/outbox.ts"
+    "outbox": "node --env-file-if-exists=.env scripts/outbox.ts",
+    "load": "node scripts/load/run.ts",
+    "load:report": "node scripts/load/report.ts"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "8.3.0",

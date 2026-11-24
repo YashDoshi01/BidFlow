@@ -54,6 +54,34 @@ export async function readBoundary(
   return rows[0] as BoundaryDecision;
 }
 
+export interface PeekState {
+  status: string;
+  seller_id: string;
+  highest_bid_id: string | null;
+  starting_price: string;
+  current_price: string;
+  minimum_increment: string;
+  started: boolean;
+  open: boolean;
+}
+
+/**
+ * An UNLOCKED read of the facts a bid is first judged on (ADR-073). It takes no row lock, so it
+ * never waits behind other bids. The answer may be stale by the time it is used; the caller may
+ * only use it to refuse a bid that the locked path would also refuse (the price never goes down).
+ */
+export async function peekForBid(db: Queryable, auctionId: string): Promise<PeekState | undefined> {
+  const { rows } = await db.query<PeekState>(
+    `SELECT a.status, a.seller_id, a.highest_bid_id, a.starting_price, a.current_price,
+            a.minimum_increment,
+            clock_timestamp() >= a.starts_at AS started, clock_timestamp() < a.ends_at AS open
+       FROM auctions a
+      WHERE a.id = $1`,
+    [auctionId],
+  );
+  return rows[0];
+}
+
 export async function insertBid(
   client: pg.PoolClient,
   b: {

@@ -1,0 +1,62 @@
+{
+  "scenario": "fanout",
+  "workload": {
+    "kind": "one auction, many sockets across two API instances behind NGINX (least_conn)",
+    "sockets": 200,
+    "bids": 100,
+    "bidPacing": "one bid every ~100 ms from one bidder (POST through NGINX)",
+    "latencyDefinition": "time from sending the POST until the socket received bid.accepted, same process clock (performance.now); it includes the bid transaction, the outbox worker poll, Redis, and the instance fan-out"
+  },
+  "measured": {
+    "socketsPerInstance": {
+      "api1": 100,
+      "api2": 100
+    },
+    "deliveriesExpected": 20000,
+    "deliveriesReceived": 20000,
+    "endToEndLatencyMs": {
+      "count": 20000,
+      "min": 14.85,
+      "mean": 76.44,
+      "p50": 76.22,
+      "p90": 114.8,
+      "p95": 118.87,
+      "p99": 123.94,
+      "max": 148.75
+    },
+    "endToEndLatencyByInstanceMs": {
+      "api1": {
+        "count": 10000,
+        "min": 14.85,
+        "mean": 76.43,
+        "p50": 76.23,
+        "p90": 114.76,
+        "p95": 118.72,
+        "p99": 123.94,
+        "max": 148.41
+      },
+      "api2": {
+        "count": 10000,
+        "min": 14.93,
+        "mean": 76.45,
+        "p50": 76.2,
+        "p90": 114.88,
+        "p95": 118.99,
+        "p99": 123.58,
+        "max": 148.75
+      }
+    },
+    "outboxPublicationDelayMs": {
+      "count": 100,
+      "min": 7.15,
+      "mean": 61.43,
+      "p50": 62.95,
+      "p90": 98.97,
+      "p95": 101.28,
+      "p99": 105.15,
+      "max": 105.57
+    },
+    "outboxPublished": 100
+  },
+  "violations": []
+}
